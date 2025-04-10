@@ -60,6 +60,7 @@ import {
       });
       return { success: true, id: docRef.id };
     } catch (error: any) {
+      console.error("Error adding expense:", error);
       return { success: false, error: error.message };
     }
   };
@@ -81,9 +82,8 @@ import {
   ) => {
     try {
       let q = query(
-        collection(db, 'expenses'),
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
+        collection(db, 'users', userId, 'expenses'),
+        orderBy('dueDate', 'desc')
       );
       
       // Apply filters
@@ -103,35 +103,14 @@ import {
           where('dueDate', '<=', filters.endDate.toISOString())
         );
       }
-      // Note: Firestore doesn't support multiple range operators, so we'll filter minAmount and maxAmount in memory
-      
-      q = query(q, limit(pageSize));
-      
-      // Apply pagination if lastDoc is provided
-      if (lastDoc) {
-        q = query(q, startAfter(lastDoc));
-      }
       
       const querySnapshot = await getDocs(q);
-      const expenses: Expense[] = [];
-      const lastVisible = querySnapshot.docs[querySnapshot.docs.length - 1];
+      const expenses = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Expense[];
       
-      querySnapshot.forEach((doc) => {
-        const data = doc.data() as Expense;
-        
-        // Apply amount filters in memory
-        if (
-          (filters.minAmount === undefined || data.amount >= filters.minAmount) &&
-          (filters.maxAmount === undefined || data.amount <= filters.maxAmount)
-        ) {
-          expenses.push({
-            ...data,
-            id: doc.id,
-          });
-        }
-      });
-      
-      return { success: true, expenses, lastVisible };
+      return { success: true, expenses };
     } catch (error: any) {
       return { success: false, error: error.message };
     }
@@ -168,9 +147,9 @@ import {
   };
   
   // Update an expense
-  export const updateExpense = async (id: string, expenseData: Partial<Expense>) => {
+  export const updateExpense = async (userId: string, id: string, expenseData: Partial<Expense>) => {
     try {
-      await updateDoc(doc(db, 'expenses', id), expenseData);
+      await updateDoc(doc(db, 'users', userId, 'expenses', id), expenseData);
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -178,9 +157,9 @@ import {
   };
   
   // Delete an expense
-  export const deleteExpense = async (id: string) => {
+  export const deleteExpense = async (userId: string, id: string) => {
     try {
-      await deleteDoc(doc(db, 'expenses', id));
+      await deleteDoc(doc(db, 'users', userId, 'expenses', id));
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };

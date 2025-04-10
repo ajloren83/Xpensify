@@ -81,31 +81,51 @@ export function ExpenseDialog({
       return;
     }
     
-    onSave({
+    const expenseToSave = {
       ...expenseData,
-      id: expense?.id,
-      dueDate: new Date(expenseData.dueDate || "").toISOString(),
+      userId: expense?.userId,
+      name: expenseData.name,
+      amount: Number(expenseData.toPay),
       toPay: Number(expenseData.toPay),
       willPay: Number(expenseData.willPay),
       remaining: Number(expenseData.remaining),
-      tag: expenseData.tag === "none" ? "" : expenseData.tag
-    } as Expense);
+      category: expenseData.category,
+      dueDate: new Date(expenseData.dueDate || "").toISOString(),
+      status: expenseData.status || "pending",
+      tag: expenseData.tag === "none" ? "" : expenseData.tag,
+      notes: expenseData.notes || "",
+      createdAt: expense?.createdAt || new Date().toISOString()
+    };
+    
+    // Only include id if we're editing an existing expense
+    if (expense?.id) {
+      expenseToSave.id = expense.id;
+    }
+    
+    onSave(expenseToSave as Expense);
+  };
+
+  const handleDialogOpenChange = (open: boolean) => {
+    if (!open) {
+      onClose();
+    }
+    onOpenChange(open);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{expense ? "Edit Expense" : "Add Expense"}</DialogTitle>
+          <DialogTitle>{expense ? "Edit Transaction" : "Add Transaction"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">Transaction Name</Label>
             <Input
               id="name"
               value={expenseData.name}
               onChange={(e) => handleChange("name", e.target.value)}
-              placeholder="Expense name"
+              placeholder="Enter transaction name"
               required
             />
           </div>
@@ -252,7 +272,7 @@ export function ExpenseDialog({
               Cancel
             </Button>
             <Button type="submit">
-              {expense ? "Save Changes" : "Add Expense"}
+              {expense ? "Save Changes" : "Add Transaction"}
             </Button>
           </DialogFooter>
         </form>

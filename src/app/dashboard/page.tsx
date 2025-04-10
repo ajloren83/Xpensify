@@ -167,10 +167,15 @@ export default function DashboardPage() {
   return (
     <div className="space-y-4 max-w-full">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <Button className="bg-gradient-to-br from-[#63C94E] to-[#15614E]">
-          Add New Transaction
-        </Button>
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <div className="flex gap-2">
+          <Button>
+            + Add Expense
+          </Button>
+          <Button>
+            + Add Recurring Expense
+          </Button>
+        </div>
       </div>
       
       {/* Stats Overview */}

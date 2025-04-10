@@ -63,15 +63,11 @@ const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
             <div className="text-sm opacity-90">{description}</div>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          {action}
-          <button
-            onClick={onClose}
-            className="absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        {action && (
+          <div className="flex items-center gap-2">
+            {action}
+          </div>
+        )}
       </div>
     );
   }

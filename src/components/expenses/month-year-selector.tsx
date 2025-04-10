@@ -23,7 +23,7 @@ export function MonthYearSelector({
   const [scrollLeft, setScrollLeft] = useState(0);
   const [visibleMonths, setVisibleMonths] = useState(12);
   
-  // Scroll to current month on initial render
+  // Scroll to current month on initial render and when month changes
   useEffect(() => {
     if (scrollContainerRef.current) {
       const currentMonthButton = scrollContainerRef.current.querySelector('[data-current="true"]');
@@ -31,7 +31,7 @@ export function MonthYearSelector({
         currentMonthButton.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
       }
     }
-  }, []);
+  }, [currentMonth, currentYear]);
   
   const handlePreviousMonth = () => {
     const prevDate = subMonths(currentDate, 1);
@@ -44,6 +44,7 @@ export function MonthYearSelector({
   };
   
   const handleMonthClick = (month: number, year: number) => {
+    console.log('Month clicked:', { month, year });
     onChange(month, year);
   };
 

@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { 
   PlusIcon, 
@@ -55,7 +55,7 @@ export default function ExpensesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedExpenses, setSelectedExpenses] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [showDialog, setShowDialog] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
@@ -66,6 +66,9 @@ export default function ExpensesPage() {
     status: "all" as ExpenseStatus | "all",
     category: "all" as ExpenseCategory | "all",
   });
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
+  const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
 
   const { data: expensesData = [], isLoading: expensesLoading } = useQuery({
     queryKey: ["expenses", user?.uid],
@@ -83,27 +86,51 @@ export default function ExpensesPage() {
   const loadExpenses = async () => {
     if (!user) return;
     
-    setIsLoading(true);
     try {
+      setIsLoading(true);
+      console.log("Loading expenses for month:", currentMonth, "year:", currentYear);
+      
+      // Calculate the correct date range for the selected month
       const startDate = new Date(currentYear, currentMonth, 1);
-      const endDate = new Date(currentYear, currentMonth + 1, 0);
+      const endDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999);
+      
+      console.log("Date range:", {
+        start: startDate.toISOString(),
+        end: endDate.toISOString()
+      });
       
       const result = await getExpenses(user.uid, {
         startDate,
-        endDate,
-        category: filters.category || undefined,
-        type: filters.type as ExpenseType || undefined,
-        status: filters.status as ExpenseStatus || undefined
+        endDate
       });
       
-      if (!result.success || !result.expenses) {
-        console.error("Error loading expenses:", result.error);
-        return;
-      }
+      console.log("Firestore response:", result);
       
-      setExpenses(result.expenses);
+      if (result.success && result.expenses) {
+        const filteredExpenses = result.expenses.filter(expense => {
+          const expenseDate = new Date(expense.dueDate);
+          const matchesMonth = expenseDate.getMonth() === currentMonth;
+          const matchesYear = expenseDate.getFullYear() === currentYear;
+          
+          console.log("Filtering expense:", {
+            name: expense.name,
+            date: expense.dueDate,
+            matchesMonth,
+            matchesYear
+          });
+          
+          return matchesMonth && matchesYear;
+        });
+        
+        setExpenses(filteredExpenses);
+        console.log("Expenses loaded:", filteredExpenses.length);
+      } else {
+        console.error("Error loading expenses:", result.error);
+        setExpenses([]);
+      }
     } catch (error) {
       console.error("Error loading expenses:", error);
+      setExpenses([]);
     } finally {
       setIsLoading(false);
     }
@@ -136,63 +163,182 @@ export default function ExpensesPage() {
     }
   };
 
-  const handleDeleteSelected = async () => {
+  const handleDeleteExpense = async (expense: Expense) => {
     if (!user) return;
+    
     try {
-      await Promise.all(
-        selectedExpenses.map((id) => expenseService.deleteExpense(user.uid, id))
-      );
-      setSelectedExpenses([]);
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      // Delete the expense
+      const deleteResult = await deleteExpense(user.uid, expense.id || "");
+      
+      if (deleteResult.success) {
+        // If this is an original expense (not a carry forward), delete all its carry forwards
+        if (!expense.name.includes("(Carry Forward)")) {
+          // Find all carry forward expenses for this transaction
+          const carryForwards = expenses.filter(e => 
+            e.name === expense.name && 
+            e.id !== expense.id && 
+            new Date(e.dueDate) > new Date(expense.dueDate)
+          );
+          
+          // Delete all carry forward expenses
+          for (const cf of carryForwards) {
+            await deleteExpense(user.uid, cf.id || "");
+          }
+        }
+        
+        toast({
+          title: "Success",
+          description: "Transaction deleted successfully",
+        });
+        
+        // Reload expenses to update the UI
+        loadExpenses();
+      } else {
+        throw new Error("Failed to delete transaction");
+      }
     } catch (error) {
-      console.error('Error deleting expenses:', error);
+      console.error("Error deleting expense:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete transaction",
+        variant: "destructive"
+      });
     }
   };
 
-  const handleDeleteExpense = async (expense: Expense) => {
-    if (!user) return;
+  const handleDeleteSelected = async () => {
+    if (!user || selectedExpenses.length === 0) return;
+    
     try {
-      if (expense.id) {
-        await expenseService.deleteExpense(user.uid, expense.id);
-        queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      // Delete all selected expenses
+      for (const expenseId of selectedExpenses) {
+        const expense = expenses.find(e => e.id === expenseId);
+        if (expense) {
+          await handleDeleteExpense(expense);
+        }
       }
+      
+      // Clear selection
+      setSelectedExpenses([]);
+      
+      toast({
+        title: "Success",
+        description: "Selected transactions deleted successfully",
+      });
     } catch (error) {
-      console.error('Error deleting expense:', error);
+      console.error("Error deleting selected expenses:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete selected transactions",
+        variant: "destructive"
+      });
     }
   };
 
   const handleEditExpense = (expense: Expense) => {
     setEditingExpense(expense);
-    setIsDialogOpen(true);
+    setShowDialog(true);
   };
 
   const handleDialogClose = () => {
-    setIsDialogOpen(false);
+    setShowDialog(false);
     setEditingExpense(null);
   };
 
-  const handleSaveExpense = async (expense: Expense) => {
+  const handleSaveExpense = async (expenseData: Expense) => {
     if (!user) return;
     
+    console.log("Saving expense:", expenseData);
+    
     try {
-      if (editingExpense) {
-        await updateExpense(expense.id || "", expense);
+      // Set the due date to the selected month/year
+      const dueDate = new Date(currentYear, currentMonth, expenseData.dueDate ? new Date(expenseData.dueDate).getDate() : 1);
+      expenseData.dueDate = dueDate.toISOString();
+      
+      if (expenseData.id) {
+        // Update existing expense
+        console.log("Updating expense:", expenseData);
+        const result = await updateExpense(user.uid, expenseData.id, expenseData);
+        if (result.success) {
+          toast({
+            title: "Success",
+            description: "Expense updated successfully",
+          });
+          loadExpenses();
+        }
       } else {
-        await addExpense({
-          ...expense,
-          userId: user.uid
-        });
+        // Add new expense
+        console.log("Adding new expense:", expenseData);
+        const newExpense = {
+          ...expenseData,
+          userId: user.uid,
+          amount: expenseData.toPay,
+          toPay: expenseData.toPay || 0,
+          willPay: expenseData.willPay || 0,
+          remaining: expenseData.remaining || 0,
+          type: expenseData.type || "expense",
+          category: expenseData.category || "Other",
+          status: expenseData.status || "pending",
+          notes: expenseData.notes || "",
+          createdAt: new Date().toISOString()
+        };
+        
+        const result = await addExpense(newExpense);
+        
+        console.log("Add result:", result);
+        
+        if (result.success) {
+          // If there's a remaining amount, create a carry forward expense
+          if (newExpense.remaining > 0) {
+            // Calculate next month's date
+            let nextMonth = currentMonth + 1;
+            let nextYear = currentYear;
+            if (nextMonth > 11) {
+              nextMonth = 0;
+              nextYear++;
+            }
+            
+            const carryForwardExpense = {
+              ...newExpense,
+              name: newExpense.name,
+              amount: newExpense.remaining,
+              toPay: newExpense.remaining,
+              willPay: 0,
+              remaining: newExpense.remaining,
+              dueDate: new Date(nextYear, nextMonth, dueDate.getDate()).toISOString(),
+              status: "pending",
+              createdAt: new Date().toISOString()
+            };
+            
+            console.log("Creating carry forward expense:", carryForwardExpense);
+            await addExpense(carryForwardExpense);
+          }
+          
+          toast({
+            title: "Success",
+            description: "Expense added successfully",
+          });
+          loadExpenses();
+        }
       }
-      loadExpenses();
-      handleDialogClose();
+      
+      setShowDialog(false);
+      setEditingExpense(null);
     } catch (error) {
       console.error("Error saving expense:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save expense",
+        variant: "destructive"
+      });
     }
   };
 
   const handleMonthYearChange = (month: number, year: number) => {
+    console.log('Month/Year changed:', { month, year });
     setCurrentMonth(month);
     setCurrentYear(year);
+    // The useEffect with [user, currentMonth, currentYear, filters] dependency will automatically trigger loadExpenses
   };
 
   const clearFilters = () => {
@@ -204,26 +350,70 @@ export default function ExpensesPage() {
     });
   };
 
-  const filteredExpenses = expenses.filter((expense) => {
-    const matchesSearch = expense.name
-      .toLowerCase()
-      .includes(filters.search.toLowerCase());
-    const matchesType = filters.type === "all" || expense.type === filters.type;
-    const matchesStatus = filters.status === "all" || expense.status === filters.status;
-    const matchesCategory = filters.category === "all" || expense.category === filters.category;
-
-    return matchesSearch && matchesType && matchesStatus && matchesCategory;
+  const filteredExpenses = expenses.filter(expense => {
+    const expenseDate = new Date(expense.dueDate);
+    const matchesMonth = expenseDate.getMonth() === currentMonth;
+    const matchesYear = expenseDate.getFullYear() === currentYear;
+    const matchesSearch = filters.search === "" || 
+      expense.name.toLowerCase().includes(filters.search.toLowerCase()) ||
+      expense.category.toLowerCase().includes(filters.search.toLowerCase());
+    
+    console.log("Filtering expense:", {
+      name: expense.name,
+      date: expense.dueDate,
+      matchesMonth,
+      matchesYear,
+      matchesSearch
+    });
+    
+    return matchesMonth && matchesYear && matchesSearch;
   });
+
+  const handleDeleteClick = (expense: Expense) => {
+    setExpenseToDelete(expense);
+    setShowDeleteDialog(true);
+  };
+
+  const handleBatchDeleteClick = () => {
+    if (selectedExpenses.length > 0) {
+      setShowBatchDeleteDialog(true);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (expenseToDelete) {
+      await handleDeleteExpense(expenseToDelete);
+      setShowDeleteDialog(false);
+      setExpenseToDelete(null);
+    }
+  };
+
+  const handleBatchDeleteConfirm = async () => {
+    await handleDeleteSelected();
+    setShowBatchDeleteDialog(false);
+  };
 
   return (
     <div className="space-y-4 max-w-full">
       {/* Row 1: Heading and Add Expense Button */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Expenses</h1>
-        <Button onClick={() => setIsDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Expense
-        </Button>
+        <div className="flex gap-2">
+          {selectedExpenses.length > 0 && (
+            <Button 
+              variant="destructive" 
+              onClick={handleBatchDeleteClick}
+              disabled={selectedExpenses.length === 0}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Selected ({selectedExpenses.length})
+            </Button>
+          )}
+          <Button onClick={() => setShowDialog(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Transaction
+          </Button>
+        </div>
       </div>
 
       {/* Row 2: Search, View Toggle, and Filters */}
@@ -270,19 +460,20 @@ export default function ExpensesPage() {
                         onCheckedChange={handleSelectAll}
                       />
                     </TableHead>
-                    <TableHead>Expense</TableHead>
+                    <TableHead>Transaction</TableHead>
                     <TableHead>To Pay</TableHead>
                     <TableHead>Will Pay</TableHead>
                     <TableHead>Remaining</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Due Date</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Balance</TableHead>
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredExpenses.map((expense) => (
-                    <TableRow key={expense.id}>
+                    <TableRow key={`${expense.id || ''}-${expense.name}-${expense.dueDate}`}>
                       <TableCell>
                         <Checkbox
                           checked={selectedExpenses.includes(expense.id || "")}
@@ -327,6 +518,15 @@ export default function ExpensesPage() {
                         </span>
                       </TableCell>
                       <TableCell>
+                        {expense.status === "paid" 
+                          ? formatCurrency(expense.type === "income" 
+                              ? expense.amount + expense.willPay 
+                              : expense.amount - expense.willPay)
+                          : formatCurrency(expense.type === "income" 
+                              ? expense.amount 
+                              : -expense.amount)}
+                      </TableCell>
+                      <TableCell>
                         <div className="flex items-center gap-2">
                           <Button
                             variant="ghost"
@@ -338,7 +538,7 @@ export default function ExpensesPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDeleteExpense(expense)}
+                            onClick={() => handleDeleteClick(expense)}
                           >
                             <TrashIcon className="h-4 w-4" />
                           </Button>
@@ -358,20 +558,62 @@ export default function ExpensesPage() {
               key={expense.id}
               expense={expense}
               onEdit={handleEditExpense}
-              onDelete={handleDeleteExpense}
+              onDelete={handleDeleteClick}
             />
           ))}
         </div>
       )}
 
       <ExpenseDialog
-        open={isDialogOpen}
-        onOpenChange={setIsDialogOpen}
+        open={showDialog}
+        onOpenChange={setShowDialog}
         expense={editingExpense}
         onSave={handleSaveExpense}
         onClose={handleDialogClose}
         autoTags={autoTags}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Transaction</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this transaction? This action cannot be undone.
+              {expenseToDelete?.remaining && expenseToDelete.remaining > 0 && " All carry forward transactions will also be deleted."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Batch Delete Confirmation Dialog */}
+      <Dialog open={showBatchDeleteDialog} onOpenChange={setShowBatchDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Selected Transactions</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {selectedExpenses.length} selected transaction(s)? 
+              This action cannot be undone. All carry forward transactions will also be deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBatchDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleBatchDeleteConfirm}>
+              Delete Selected
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 
