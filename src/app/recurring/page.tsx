@@ -10,19 +10,61 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { PlusIcon, TrashIcon, EditIcon, FilterIcon } from "lucide-react";
+import { PlusIcon, TrashIcon, EditIcon, FilterIcon, SearchIcon, LayoutGridIcon, TableIcon } from "lucide-react";
 import { RecurringExpenseDialog } from "@/components/recurring/recurring-expense-dialog";
+import { Input } from "@/components/ui/input";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+
+// Create a simple toggle group component since the UI component is missing
+const ToggleGroup = ({ type, value, onValueChange, children }: { 
+  type: "single" | "multiple", 
+  value: string, 
+  onValueChange: (value: string) => void, 
+  children: React.ReactNode 
+}) => {
+  return (
+    <div className="inline-flex rounded-md border border-input bg-background">
+      {children}
+    </div>
+  );
+};
+
+const ToggleGroupItem = ({ value, ariaLabel, children, onClick }: { 
+  value: string, 
+  ariaLabel: string, 
+  children: React.ReactNode,
+  onClick?: () => void
+}) => {
+  return (
+    <button
+      className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=on]:bg-accent data-[state=on]:text-accent-foreground"
+      aria-label={ariaLabel}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+};
 
 type FilterStatus = "all" | "active" | "upcoming" | "finished";
+type ViewMode = "table" | "card";
+
+// Extend the RecurringExpense type to include description
+interface ExtendedRecurringExpense extends RecurringExpense {
+  description?: string;
+}
 
 export default function RecurringPage() {
   const { user } = useAuth();
-  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
+  const [recurringExpenses, setRecurringExpenses] = useState<ExtendedRecurringExpense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedExpenses, setSelectedExpenses] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<RecurringExpense | null>(null);
+  const [editingExpense, setEditingExpense] = useState<ExtendedRecurringExpense | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
 
   useEffect(() => {
     if (user) {
@@ -34,33 +76,19 @@ export default function RecurringPage() {
     if (!user) return;
     
     setIsLoading(true);
+    setError(null);
+    
     try {
-      const result = await getRecurringExpenses(user.uid);
+      const result = await getRecurringExpenses(user.uid, filterStatus !== "all" ? filterStatus : undefined);
       
-      if (!result.success || !result.recurringExpenses) {
-        console.error("Error loading recurring expenses:", result.error);
-        return;
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to fetch recurring expenses');
       }
       
-      // Apply filter
-      let filteredExpenses = result.recurringExpenses;
-      if (filterStatus !== "all") {
-        const now = new Date();
-        filteredExpenses = result.recurringExpenses.filter((expense: RecurringExpense) => {
-          if (filterStatus === "active") {
-            return !expense.endDate || new Date(expense.endDate) > now;
-          } else if (filterStatus === "upcoming") {
-            return new Date(expense.startDate) > now;
-          } else if (filterStatus === "finished") {
-            return expense.endDate && new Date(expense.endDate) <= now;
-          }
-          return true;
-        });
-      }
-      
-      setRecurringExpenses(filteredExpenses);
-    } catch (error) {
-      console.error("Error loading recurring expenses:", error);
+      setRecurringExpenses(result.recurringExpenses || []);
+    } catch (err: any) {
+      console.error('Error fetching recurring expenses:', err);
+      setError(err.message || 'An error occurred while fetching recurring expenses');
     } finally {
       setIsLoading(false);
     }
@@ -88,13 +116,13 @@ export default function RecurringPage() {
     try {
       await Promise.all(selectedExpenses.map(id => deleteRecurringExpense(id)));
       setSelectedExpenses([]);
-      loadRecurringExpenses();
+      await loadRecurringExpenses();
     } catch (error) {
       console.error("Error deleting recurring expenses:", error);
     }
   };
 
-  const handleEditExpense = (expense: RecurringExpense) => {
+  const handleEditExpense = (expense: ExtendedRecurringExpense) => {
     setEditingExpense(expense);
     setIsDialogOpen(true);
   };
@@ -104,7 +132,7 @@ export default function RecurringPage() {
     setEditingExpense(null);
   };
 
-  const handleSaveExpense = async (expense: RecurringExpense) => {
+  const handleSaveExpense = async (expense: ExtendedRecurringExpense) => {
     if (!user) return;
     
     try {
@@ -113,63 +141,126 @@ export default function RecurringPage() {
       } else {
         // Add new expense logic would go here
       }
-      loadRecurringExpenses();
+      await loadRecurringExpenses();
       handleDialogClose();
     } catch (error) {
       console.error("Error saving recurring expense:", error);
     }
   };
 
+  const filteredExpenses = recurringExpenses.filter(expense => 
+    expense.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    expense.description?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (error) {
+    return (
+      <div className="container mx-auto py-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+          <p>{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="mt-2 text-sm underline"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="space-y-6 max-w-full">
+      {/* First row: Heading and Add button */}
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Recurring Expenses</h1>
-        <Button onClick={() => setIsDialogOpen(true)}>
+        <h1 className="text-2xl font-bold">Recurring Expenses</h1>
+        <Button 
+          onClick={() => setIsDialogOpen(true)}
+        >
           <PlusIcon className="mr-2 h-4 w-4" />
           Add Recurring Expense
         </Button>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Recurring Expenses</CardTitle>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <FilterIcon className="h-4 w-4 text-muted-foreground" />
-              <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as FilterStatus)}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Expenses</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="upcoming">Upcoming</SelectItem>
-                  <SelectItem value="finished">Finished</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {selectedExpenses.length > 0 && (
-              <Button variant="destructive" size="sm" onClick={handleDeleteSelected}>
-                <TrashIcon className="mr-2 h-4 w-4" />
-                Delete Selected ({selectedExpenses.length})
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-4">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-12 w-full animate-pulse rounded bg-muted"></div>
-              ))}
-            </div>
+      {/* Second row: Search, Filter, and View Toggle */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <SearchIcon className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search expenses..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8"
+          />
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="relative">
+              <FilterIcon className="mr-2 h-4 w-4" />
+              Filters
+              {filterStatus !== "all" && (
+                <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
+                  1
+                </span>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+        </DropdownMenu>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setViewMode(viewMode === "table" ? "card" : "table")}
+        >
+          {viewMode === "table" ? (
+            <LayoutGridIcon className="h-4 w-4" />
           ) : (
+            <TableIcon className="h-4 w-4" />
+          )}
+        </Button>
+      </div>
+
+      {/* Batch operations row - only shown when items are selected */}
+      {selectedExpenses.length > 0 && (
+        <div className="flex items-center justify-between bg-muted/50 p-2 rounded-md">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">
+              {selectedExpenses.length} {selectedExpenses.length === 1 ? 'expense' : 'expenses'} selected
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              onClick={handleDeleteSelected}
+              className="h-8"
+            >
+              <TrashIcon className="mr-2 h-4 w-4" />
+              Delete
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Third row: Table or Card view */}
+      {isLoading ? (
+        <div className="space-y-4">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-12 w-full animate-pulse rounded bg-muted"></div>
+          ))}
+        </div>
+      ) : filteredExpenses.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          {searchQuery ? "No expenses match your search." : "No recurring expenses found. Add your first recurring expense to get started."}
+        </div>
+      ) : viewMode === "table" ? (
+        <Card>
+          <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">
                     <Checkbox 
-                      checked={selectedExpenses.length === recurringExpenses.length && recurringExpenses.length > 0}
+                      checked={selectedExpenses.length === filteredExpenses.length && filteredExpenses.length > 0}
                       onCheckedChange={handleSelectAll}
                     />
                   </TableHead>
@@ -177,52 +268,73 @@ export default function RecurringPage() {
                   <TableHead>Amount</TableHead>
                   <TableHead>Due Date</TableHead>
                   <TableHead>Finish Date</TableHead>
-                  <TableHead>Status</TableHead>
                   <TableHead className="w-12">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recurringExpenses.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      No recurring expenses found
+                {filteredExpenses.map((expense) => (
+                  <TableRow key={expense.id}>
+                    <TableCell>
+                      <Checkbox 
+                        checked={selectedExpenses.includes(expense.id || "")}
+                        onCheckedChange={(checked) => handleSelectExpense(expense.id || "", checked as boolean)}
+                      />
+                    </TableCell>
+                    <TableCell className="font-medium">{expense.name}</TableCell>
+                    <TableCell>{formatCurrency(expense.amount)}</TableCell>
+                    <TableCell>{formatDate(expense.dueDate)}</TableCell>
+                    <TableCell>{expense.endDate ? formatDate(expense.endDate) : "Infinite"}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" onClick={() => handleEditExpense(expense)}>
+                        <EditIcon className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
-                ) : (
-                  recurringExpenses.map((expense) => (
-                    <TableRow key={expense.id}>
-                      <TableCell>
-                        <Checkbox 
-                          checked={selectedExpenses.includes(expense.id || "")}
-                          onCheckedChange={(checked) => handleSelectExpense(expense.id || "", checked as boolean)}
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">{expense.name}</TableCell>
-                      <TableCell>{formatCurrency(expense.amount)}</TableCell>
-                      <TableCell>{formatDate(expense.dueDate)}</TableCell>
-                      <TableCell>{expense.endDate ? formatDate(expense.endDate) : "Infinite"}</TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          !expense.endDate || new Date(expense.endDate) > new Date() 
-                            ? "bg-green-100 text-green-800" 
-                            : "bg-gray-100 text-gray-800"
-                        }`}>
-                          {!expense.endDate || new Date(expense.endDate) > new Date() ? "Active" : "Finished"}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => handleEditExpense(expense)}>
-                          <EditIcon className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
+                ))}
               </TableBody>
             </Table>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredExpenses.map((expense) => (
+            <Card key={expense.id} className="overflow-hidden">
+              <CardHeader className="pb-2">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-lg">{expense.name}</CardTitle>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox 
+                      checked={selectedExpenses.includes(expense.id || "")}
+                      onCheckedChange={(checked) => handleSelectExpense(expense.id || "", checked as boolean)}
+                    />
+                    <Button variant="ghost" size="icon" onClick={() => handleEditExpense(expense)}>
+                      <EditIcon className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Amount:</span>
+                    <span className="font-medium">{formatCurrency(expense.amount)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Due Date:</span>
+                    <span>{formatDate(expense.dueDate)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Finish Date:</span>
+                    <span>{expense.endDate ? formatDate(expense.endDate) : "Infinite"}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <RecurringExpenseDialog 
         open={isDialogOpen} 

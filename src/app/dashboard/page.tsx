@@ -146,7 +146,7 @@ export default function DashboardPage() {
   // Helper for empty state
   if (loading) {
     return (
-      <div className="container mx-auto p-4 space-y-4">
+      <div className="space-y-4 max-w-full">
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold">Dashboard</h1>
         </div>
@@ -165,9 +165,9 @@ export default function DashboardPage() {
   }
   
   return (
-    <div className="container mx-auto p-4 space-y-6">
+    <div className="space-y-4 max-w-full">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <h1 className="text-3xl font-bold">Dashboard</h1>
         <Button className="bg-gradient-to-br from-[#63C94E] to-[#15614E]">
           Add New Transaction
         </Button>

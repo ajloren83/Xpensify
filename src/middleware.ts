@@ -2,40 +2,23 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  // Temporarily bypass all authentication checks
-  return NextResponse.next();
-
-  // Original authentication code (commented out)
-  /*
   const authCookie = request.cookies.get('auth');
-  const { pathname } = request.nextUrl;
+  const isAuthPage = request.nextUrl.pathname.startsWith('/auth');
 
-  // Auth pages that should redirect to dashboard if user is authenticated
-  const authPages = ['/auth/login', '/auth/signup', '/auth/reset-password'];
-  
-  // Protected pages that require authentication
-  const protectedPages = ['/dashboard', '/expenses', '/recurring', '/settings'];
-
-  // Check if the current path is an auth page
-  const isAuthPage = authPages.some(page => pathname.startsWith(page));
-  
-  // Check if the current path is a protected page
-  const isProtectedPage = protectedPages.some(page => pathname.startsWith(page));
-
-  // If user is authenticated and tries to access auth pages, redirect to dashboard
-  if (isAuthPage && authCookie) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
-  }
-
-  // If user is not authenticated and tries to access protected pages, redirect to login
-  if (isProtectedPage && !authCookie) {
+  // If user is not authenticated and trying to access a protected route
+  if (!authCookie && !isAuthPage) {
+    // Store the original URL to redirect back after login
     const redirectUrl = new URL('/auth/login', request.url);
-    redirectUrl.searchParams.set('redirect', pathname);
+    redirectUrl.searchParams.set('redirect', request.nextUrl.pathname);
     return NextResponse.redirect(redirectUrl);
   }
 
+  // If user is authenticated and trying to access auth pages
+  if (authCookie && isAuthPage) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
+
   return NextResponse.next();
-  */
 }
 
 export const config = {

@@ -1,13 +1,12 @@
 // /components/layout/Sidebar.tsx
 "use client";
 
-import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, Home, CreditCard, Calendar, Settings } from 'lucide-react';
+import { Home, CreditCard, Calendar, Settings } from 'lucide-react';
+import { useTheme } from 'next-themes';
 
 const menuItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
@@ -16,34 +15,42 @@ const menuItems = [
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
-export function Sidebar() {
-  const [collapsed, setCollapsed] = useState(false);
-  const pathname = usePathname();
+interface SidebarProps {
+  collapsed: boolean;
+}
 
-  const toggleCollapse = () => {
-    setCollapsed(!collapsed);
-  };
+export function Sidebar({ collapsed }: SidebarProps) {
+  const pathname = usePathname();
+  const { theme } = useTheme();
 
   return (
     <div className={cn(
-      'flex flex-col h-full bg-background border-r transition-all duration-300',
+      'flex flex-col h-full bg-background border-r transition-all duration-300 shrink-0',
       collapsed ? 'w-16' : 'w-64'
     )}>
       <div className="flex items-center justify-between p-4 border-b">
         {!collapsed && (
-          <div className="flex items-center gap-2">
-            <Image src="/logo.svg" alt="Xpensify" width={32} height={32} />
-            <span className="font-semibold text-lg">Xpensify</span>
+          <div className="flex items-center">
+            <Image 
+              src={theme === 'dark' ? "/logo-dark-mode.svg" : "/logo-light-mode.svg"} 
+              alt="Xpensify" 
+              width={100} 
+              height={32} 
+              className="w-full h-auto"
+            />
           </div>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleCollapse}
-          className="ml-auto"
-        >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-        </Button>
+        {collapsed && (
+          <div className="flex items-center justify-center w-full">
+            <Image 
+              src={theme === 'dark' ? "/logo.svg" : "/logo.svg"} 
+              alt="Xpensify" 
+              width={32} 
+              height={32} 
+              className="w-full h-auto"
+            />
+          </div>
+        )}
       </div>
 
       <nav className="flex-1 p-2 space-y-1">

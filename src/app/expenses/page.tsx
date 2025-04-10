@@ -219,7 +219,7 @@ export default function ExpensesPage() {
     <div className="space-y-4 max-w-full">
       {/* Row 1: Heading and Add Expense Button */}
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Expenses</h1>
+        <h1 className="text-2xl font-bold">Expenses</h1>
         <Button onClick={() => setIsDialogOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Add Expense

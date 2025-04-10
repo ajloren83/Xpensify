@@ -12,10 +12,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { BellIcon, MoonIcon, SunIcon, UserIcon, SettingsIcon, LogOutIcon } from "lucide-react";
+import { BellIcon, MoonIcon, SunIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { db, rtdb } from "@/lib/firebase";
 import { ref, onValue, off, update } from "firebase/database";
+import { useTheme } from "next-themes";
+import { AvatarDropdown } from "@/components/avatar-dropdown";
 
 interface Notification {
   id: string;
@@ -25,12 +27,17 @@ interface Notification {
   read: boolean;
 }
 
-export function TopBar() {
-  const { user, logout } = useAuth();
+interface TopBarProps {
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+}
+
+export function TopBar({ collapsed, onToggleCollapse }: TopBarProps) {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     if (!user) return;
@@ -63,8 +70,7 @@ export function TopBar() {
   }, [user]);
 
   const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-    document.documentElement.classList.toggle("dark");
+    setTheme(theme === "dark" ? "light" : "dark");
   };
 
   const markNotificationAsRead = async (notificationId: string) => {
@@ -78,16 +84,18 @@ export function TopBar() {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-    } catch (error) {
-      console.error("Error signing out:", error);
-    }
-  };
-
   return (
-    <div className="fixed right-0 top-0 z-30 flex h-14 w-[calc(100%-16rem)] items-center border-b bg-background px-4 transition-all duration-300">
+    <div className="sticky top-0 z-30 flex h-14 w-full items-center border-b bg-background px-4 transition-all duration-300">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onToggleCollapse}
+        className="mr-4"
+        aria-label="Toggle sidebar"
+      >
+        {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+      </Button>
+
       <div className="ml-auto flex items-center space-x-4">
         <Button
           variant="ghost"
@@ -95,7 +103,7 @@ export function TopBar() {
           onClick={toggleTheme}
           aria-label="Toggle theme"
         >
-          {isDarkMode ? (
+          {theme === "dark" ? (
             <SunIcon className="h-5 w-5" />
           ) : (
             <MoonIcon className="h-5 w-5" />
@@ -142,129 +150,7 @@ export function TopBar() {
           </DropdownMenuContent>
         </DropdownMenu>
         
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2 px-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-                {user?.photoURL ? (
-                  <img
-                    src={user.photoURL}
-                    alt={user.displayName || "User"}
-                    className="h-8 w-8 rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="text-sm font-medium">
-                    {user?.displayName
-                      ? user.displayName
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")
-                          .toUpperCase()
-                      : "U"}
-                  </span>
-                )}
-              </div>
-              <div className="hidden md:flex flex-col items-start">
-                <span className="text-sm font-medium">
-                  {user?.displayName || "User"}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {user?.email}
-                </span>
-              </div>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <div className="flex items-center gap-2 p-2">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-                {user?.photoURL ? (
-                  <img
-                    src={user.photoURL}
-                    alt={user.displayName || "User"}
-                    className="h-10 w-10 rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="text-sm font-medium">
-                    {user?.displayName
-                      ? user.displayName
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")
-                          .toUpperCase()
-                      : "U"}
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">
-                  {user?.displayName || "User"}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {user?.email}
-                </span>
-              </div>
-            </div>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <a href="/settings" className="flex items-center gap-2">
-                <SettingsIcon className="h-4 w-4" />
-                Settings
-              </a>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleLogout} className="flex items-center gap-2 text-red-600">
-              <LogOutIcon className="h-4 w-4" />
-              Logout
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
-  );
-} 
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <div className="flex items-center gap-2 p-2">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-                {user?.photoURL ? (
-                  <img
-                    src={user.photoURL}
-                    alt={user.displayName || "User"}
-                    className="h-10 w-10 rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="text-sm font-medium">
-                    {user?.displayName
-                      ? user.displayName
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")
-                          .toUpperCase()
-                      : "U"}
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">
-                  {user?.displayName || "User"}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {user?.email}
-                </span>
-              </div>
-            </div>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <a href="/settings" className="flex items-center gap-2">
-                <SettingsIcon className="h-4 w-4" />
-                Settings
-              </a>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleLogout} className="flex items-center gap-2 text-red-600">
-              <LogOutIcon className="h-4 w-4" />
-              Logout
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <AvatarDropdown />
       </div>
     </div>
   );

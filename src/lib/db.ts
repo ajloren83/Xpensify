@@ -14,6 +14,8 @@ import {
     startAfter,
     Timestamp,
     serverTimestamp,
+    Query,
+    DocumentData,
   } from 'firebase/firestore';
   import { ref, set, get, remove, update } from 'firebase/database';
   import { db, rtdb } from './firebase';
@@ -215,14 +217,16 @@ import {
     status?: string
   ) => {
     try {
-      let q = query(
-        collection(db, 'recurringExpenses'),
-        where('userId', '==', userId),
-        orderBy('dueDate', 'asc')
-      );
+      console.log("Fetching recurring expenses for user:", userId);
       
-      if (status) {
-        q = query(q, where('status', '==', status));
+      // Use the correct collection path based on Firestore rules
+      const recurringRef = collection(db, `users/${userId}/recurring`);
+      
+      let q: Query<DocumentData> = recurringRef;
+      
+      // Apply status filter if provided
+      if (status && status !== "all") {
+        q = query(recurringRef, where("status", "==", status));
       }
       
       const querySnapshot = await getDocs(q);
@@ -230,14 +234,24 @@ import {
       
       querySnapshot.forEach((doc) => {
         recurringExpenses.push({
-          ...doc.data() as RecurringExpense,
           id: doc.id,
-        });
+          ...doc.data(),
+        } as RecurringExpense);
       });
       
-      return { success: true, recurringExpenses };
+      console.log("Fetched recurring expenses:", recurringExpenses);
+      
+      return {
+        success: true,
+        recurringExpenses,
+      };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      console.error("Error fetching recurring expenses:", error);
+      return {
+        success: false,
+        error: error.message,
+        recurringExpenses: [],
+      };
     }
   };
   

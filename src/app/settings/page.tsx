@@ -10,15 +10,19 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { updateUserProfile, updateUserSettings } from "@/lib/db";
-import { User } from "@/types/user";
-import { LogOutIcon, SaveIcon } from "lucide-react";
+import { LogOutIcon, SaveIcon, EditIcon } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useRouter } from "next/navigation";
+import { User } from "firebase/auth";
 
 export default function SettingsPage() {
-  const { user, signOut } = useAuth();
+  const { user, logout } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("profile");
   const [isLoading, setIsLoading] = useState(false);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   
   // Profile state
   const [fullName, setFullName] = useState(user?.displayName || "");
@@ -46,7 +50,7 @@ export default function SettingsPage() {
     try {
       await updateUserProfile(user.uid, {
         displayName: fullName,
-        photoURL: avatar,
+        photoURL: avatar || undefined,
       });
       
       toast({
@@ -103,7 +107,8 @@ export default function SettingsPage() {
 
   const handleLogout = async () => {
     try {
-      await signOut();
+      await logout();
+      router.push("/auth/login");
     } catch (error) {
       console.error("Error signing out:", error);
     }
@@ -121,270 +126,261 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="container mx-auto py-6">
-      <h1 className="text-3xl font-bold mb-6">Settings</h1>
+    <div className="space-y-6 max-w-full">
+      {/* First row: Heading */}
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Settings</h1>
+      </div>
       
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <div className="flex flex-col md:flex-row gap-6">
-          <div className="w-full md:w-64">
-            <TabsList className="flex flex-col h-auto w-full">
-              <TabsTrigger value="profile" className="w-full justify-start">
-                Profile
-              </TabsTrigger>
-              <TabsTrigger value="salary" className="w-full justify-start">
-                Salary Settings
-              </TabsTrigger>
-              <TabsTrigger value="notifications" className="w-full justify-start">
-                Notifications
-              </TabsTrigger>
-              <TabsTrigger value="display" className="w-full justify-start">
-                Display Settings
-              </TabsTrigger>
-            </TabsList>
-          </div>
+      {/* Second row: Horizontal tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground">
+          <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="salary">Salary Settings</TabsTrigger>
+          <TabsTrigger value="notifications">Notifications</TabsTrigger>
+          <TabsTrigger value="display">Display Settings</TabsTrigger>
+        </TabsList>
+        
+        {/* Tab heading */}
+        <div className="mt-6 mb-2">
+          <h2 className="text-xl font-semibold">
+            {activeTab === "profile" && "Profile Settings"}
+            {activeTab === "salary" && "Salary Settings"}
+            {activeTab === "notifications" && "Notification Settings"}
+            {activeTab === "display" && "Display Settings"}
+          </h2>
+        </div>
+        
+        {/* Third row: Settings content without box */}
+        <div className="mt-6">
+          <TabsContent value="profile" className="space-y-6">
+            <div className="space-y-6">
+              <div className="flex items-start">
+                <div className="relative">
+                  <div className="h-24 w-24 rounded-full overflow-hidden bg-muted">
+                    {avatar ? (
+                      <img 
+                        src={avatar} 
+                        alt="Profile" 
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-muted-foreground text-xl font-medium">
+                        {fullName.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  <div className="absolute bottom-0 right-0 bg-primary rounded-full p-1.5 cursor-pointer hover:bg-primary/90">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarChange}
+                      className="hidden"
+                      id="avatar-upload"
+                    />
+                    <Label 
+                      htmlFor="avatar-upload" 
+                      className="cursor-pointer"
+                    >
+                      <EditIcon className="h-4 w-4 text-primary-foreground" />
+                    </Label>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="fullName">Full Name</Label>
+                  <Input
+                    id="fullName"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                  />
+                </div>
+                
+                <div className="grid gap-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    disabled
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-between">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowLogoutDialog(true)}
+                className="border-red-600 text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950"
+              >
+                <LogOutIcon className="mr-2 h-4 w-4" />
+                Logout
+              </Button>
+              <Button onClick={handleSaveProfile} disabled={isLoading}>
+                <SaveIcon className="mr-2 h-4 w-4" />
+                Save Changes
+              </Button>
+            </div>
+          </TabsContent>
           
-          <div className="flex-1">
-            <TabsContent value="profile">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Profile Settings</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-4">
-                    <div className="flex flex-col items-center space-y-4">
-                      <div className="relative h-24 w-24 rounded-full overflow-hidden bg-muted">
-                        {avatar ? (
-                          <img 
-                            src={avatar} 
-                            alt="Profile" 
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                            {fullName.charAt(0).toUpperCase()}
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <Input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleAvatarChange}
-                          className="hidden"
-                          id="avatar-upload"
-                        />
-                        <Label 
-                          htmlFor="avatar-upload" 
-                          className="cursor-pointer text-sm text-primary hover:underline"
-                        >
-                          Change avatar
-                        </Label>
-                      </div>
-                    </div>
-                    
-                    <div className="grid gap-4">
-                      <div className="grid gap-2">
-                        <Label htmlFor="fullName">Full Name</Label>
-                        <Input
-                          id="fullName"
-                          value={fullName}
-                          onChange={(e) => setFullName(e.target.value)}
-                        />
-                      </div>
-                      
-                      <div className="grid gap-2">
-                        <Label htmlFor="email">Email</Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          value={email}
-                          disabled
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <Button variant="outline" onClick={handleLogout}>
-                      <LogOutIcon className="mr-2 h-4 w-4" />
-                      Logout
-                    </Button>
-                    <Button onClick={handleSaveProfile} disabled={isLoading}>
-                      <SaveIcon className="mr-2 h-4 w-4" />
-                      Save Changes
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+          <TabsContent value="salary" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="salaryAmount">Monthly Salary Amount</Label>
+                <Input
+                  id="salaryAmount"
+                  type="number"
+                  value={salaryAmount}
+                  onChange={(e) => setSalaryAmount(parseFloat(e.target.value))}
+                />
+              </div>
+              
+              <div className="grid gap-2">
+                <Label htmlFor="salaryDate">Salary Credit Date</Label>
+                <Select value={salaryDate} onValueChange={setSalaryDate}>
+                  <SelectTrigger id="salaryDate">
+                    <SelectValue placeholder="Select date" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
+                      <SelectItem key={day} value={day.toString()}>
+                        {day}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             
-            <TabsContent value="salary">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Salary Settings</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="salaryAmount">Monthly Salary</Label>
-                      <Input
-                        id="salaryAmount"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={salaryAmount}
-                        onChange={(e) => setSalaryAmount(parseFloat(e.target.value) || 0)}
-                      />
-                    </div>
-                    
-                    <div className="grid gap-2">
-                      <Label htmlFor="salaryDate">Salary Date</Label>
-                      <Select value={salaryDate} onValueChange={setSalaryDate}>
-                        <SelectTrigger id="salaryDate">
-                          <SelectValue placeholder="Select salary date" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1">1st of the month</SelectItem>
-                          <SelectItem value="15">15th of the month</SelectItem>
-                          <SelectItem value="28">28th of the month</SelectItem>
-                          <SelectItem value="last">Last day of the month</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-end">
-                    <Button onClick={handleSaveSettings} disabled={isLoading}>
-                      <SaveIcon className="mr-2 h-4 w-4" />
-                      Save Changes
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+            <div className="flex justify-end">
+              <Button onClick={handleSaveSettings} disabled={isLoading}>
+                <SaveIcon className="mr-2 h-4 w-4" />
+                Save Changes
+              </Button>
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="notifications" className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Salary Notifications</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Receive notifications about your salary
+                  </p>
+                </div>
+                <Switch
+                  checked={notifySalary}
+                  onCheckedChange={setNotifySalary}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Expense Notifications</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Receive notifications about your expenses
+                  </p>
+                </div>
+                <Switch
+                  checked={notifyExpenses}
+                  onCheckedChange={setNotifyExpenses}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Recurring Expense Notifications</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Receive notifications about your recurring expenses
+                  </p>
+                </div>
+                <Switch
+                  checked={notifyRecurring}
+                  onCheckedChange={setNotifyRecurring}
+                />
+              </div>
+            </div>
             
-            <TabsContent value="notifications">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Notification Settings</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label>Salary Notifications</Label>
-                        <p className="text-sm text-muted-foreground">
-                          Get notified when your salary is due
-                        </p>
-                      </div>
-                      <Switch
-                        checked={notifySalary}
-                        onCheckedChange={setNotifySalary}
-                      />
-                    </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label>Expense Notifications</Label>
-                        <p className="text-sm text-muted-foreground">
-                          Get notified about upcoming expenses
-                        </p>
-                      </div>
-                      <Switch
-                        checked={notifyExpenses}
-                        onCheckedChange={setNotifyExpenses}
-                      />
-                    </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label>Recurring Expense Notifications</Label>
-                        <p className="text-sm text-muted-foreground">
-                          Get notified about recurring expenses
-                        </p>
-                      </div>
-                      <Switch
-                        checked={notifyRecurring}
-                        onCheckedChange={setNotifyRecurring}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-end">
-                    <Button onClick={handleSaveSettings} disabled={isLoading}>
-                      <SaveIcon className="mr-2 h-4 w-4" />
-                      Save Changes
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+            <div className="flex justify-end">
+              <Button onClick={handleSaveSettings} disabled={isLoading}>
+                <SaveIcon className="mr-2 h-4 w-4" />
+                Save Changes
+              </Button>
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="display" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="currency">Currency</Label>
+                <Select value={currency} onValueChange={setCurrency}>
+                  <SelectTrigger id="currency">
+                    <SelectValue placeholder="Select currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD ($)</SelectItem>
+                    <SelectItem value="EUR">EUR (€)</SelectItem>
+                    <SelectItem value="GBP">GBP (£)</SelectItem>
+                    <SelectItem value="JPY">JPY (¥)</SelectItem>
+                    <SelectItem value="INR">INR (₹)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="grid gap-2">
+                <Label htmlFor="language">Language</Label>
+                <Select value={language} onValueChange={setLanguage}>
+                  <SelectTrigger id="language">
+                    <SelectValue placeholder="Select language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="en">English</SelectItem>
+                    <SelectItem value="es">Spanish</SelectItem>
+                    <SelectItem value="fr">French</SelectItem>
+                    <SelectItem value="de">German</SelectItem>
+                    <SelectItem value="it">Italian</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             
-            <TabsContent value="display">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Display Settings</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="currency">Currency</Label>
-                      <Select value={currency} onValueChange={setCurrency}>
-                        <SelectTrigger id="currency">
-                          <SelectValue placeholder="Select currency" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="USD">USD ($)</SelectItem>
-                          <SelectItem value="EUR">EUR (€)</SelectItem>
-                          <SelectItem value="GBP">GBP (£)</SelectItem>
-                          <SelectItem value="JPY">JPY (¥)</SelectItem>
-                          <SelectItem value="INR">INR (₹)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div className="grid gap-2">
-                      <Label htmlFor="language">Language</Label>
-                      <Select value={language} onValueChange={setLanguage}>
-                        <SelectTrigger id="language">
-                          <SelectValue placeholder="Select language" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="en">English</SelectItem>
-                          <SelectItem value="es">Spanish</SelectItem>
-                          <SelectItem value="fr">French</SelectItem>
-                          <SelectItem value="de">German</SelectItem>
-                          <SelectItem value="ja">Japanese</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label>Dark Mode</Label>
-                        <p className="text-sm text-muted-foreground">
-                          Toggle between light and dark mode
-                        </p>
-                      </div>
-                      <Switch
-                        checked={darkMode}
-                        onCheckedChange={setDarkMode}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-end">
-                    <Button onClick={handleSaveSettings} disabled={isLoading}>
-                      <SaveIcon className="mr-2 h-4 w-4" />
-                      Save Changes
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Dark Mode</Label>
+                <p className="text-sm text-muted-foreground">
+                  Enable dark mode for the application
+                </p>
+              </div>
+              <Switch
+                checked={darkMode}
+                onCheckedChange={setDarkMode}
+              />
+            </div>
+            
+            <div className="flex justify-end">
+              <Button onClick={handleSaveSettings} disabled={isLoading}>
+                <SaveIcon className="mr-2 h-4 w-4" />
+                Save Changes
+              </Button>
+            </div>
+          </TabsContent>
         </div>
       </Tabs>
+
+      <ConfirmDialog
+        isOpen={showLogoutDialog}
+        onClose={() => setShowLogoutDialog(false)}
+        onConfirm={handleLogout}
+        title="Confirm Logout"
+        description="Are you sure you want to log out? You will need to sign in again to access your account."
+        confirmText="Log out"
+        cancelText="Cancel"
+        isDangerous={true}
+      />
     </div>
   );
 } 

@@ -10,9 +10,11 @@ import {
   sendPasswordResetEmail,
   sendEmailVerification,
   signInWithPopup,
-  GoogleAuthProvider
+  GoogleAuthProvider,
+  UserCredential
 } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
+import Cookies from 'js-cookie';
 
 interface AuthContextType {
   user: User | null;
@@ -40,6 +42,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       console.log("AuthProvider: Auth state changed", user ? "User logged in" : "No user");
       setUser(user);
+      
+      // Set or remove auth cookie based on user state
+      if (user) {
+        // Set auth cookie with user ID
+        Cookies.set('auth', user.uid, { expires: 7 }); // Cookie expires in 7 days
+      } else {
+        // Remove auth cookie when user logs out
+        Cookies.remove('auth');
+      }
+      
       setLoading(false);
       setInitialized(true);
     });
@@ -53,6 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      // Cookie will be set by the onAuthStateChanged listener
     } catch (error: any) {
       // Map Firebase error codes to user-friendly messages
       const errorMessage = (() => {
@@ -78,10 +91,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = async (email: string, password: string) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     await sendEmailVerification(userCredential.user);
+    // Cookie will be set by the onAuthStateChanged listener
   };
 
   const logout = async () => {
     await signOut(auth);
+    // Cookie will be removed by the onAuthStateChanged listener
   };
 
   const resetPassword = async (email: string) => {
@@ -97,8 +112,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     try {
       console.log("Attempting to sign in with Google");
-      const result = await signInWithPopup(auth, googleProvider);
-      console.log("Google sign in successful:", result);
+      await signInWithPopup(auth, googleProvider);
+      console.log("Google sign in successful");
+      // Cookie will be set by the onAuthStateChanged listener
     } catch (error: any) {
       console.error("Google sign in error details:", {
         code: error.code,
