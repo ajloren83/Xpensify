@@ -18,34 +18,49 @@ export function MonthYearSelector({
 }: MonthYearSelectorProps) {
   const currentDate = new Date(currentYear, currentMonth, 1);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [startX, setStartX] = useState(0);
-  const [scrollLeft, setScrollLeft] = useState(0);
   const [visibleMonths, setVisibleMonths] = useState(12);
+  const [isAnimating, setIsAnimating] = useState(false);
   
   // Scroll to current month on initial render and when month changes
   useEffect(() => {
     if (scrollContainerRef.current) {
       const currentMonthButton = scrollContainerRef.current.querySelector('[data-current="true"]');
       if (currentMonthButton) {
-        currentMonthButton.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        // Use smooth scrolling behavior
+        currentMonthButton.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'nearest', 
+          inline: 'center' 
+        });
       }
     }
   }, [currentMonth, currentYear]);
   
   const handlePreviousMonth = () => {
+    if (isAnimating) return;
+    setIsAnimating(true);
     const prevDate = subMonths(currentDate, 1);
     onChange(prevDate.getMonth(), prevDate.getFullYear());
+    // Reset animation state after animation completes
+    setTimeout(() => setIsAnimating(false), 500);
   };
   
   const handleNextMonth = () => {
+    if (isAnimating) return;
+    setIsAnimating(true);
     const nextDate = addMonths(currentDate, 1);
     onChange(nextDate.getMonth(), nextDate.getFullYear());
+    // Reset animation state after animation completes
+    setTimeout(() => setIsAnimating(false), 500);
   };
   
   const handleMonthClick = (month: number, year: number) => {
+    if (isAnimating) return;
+    setIsAnimating(true);
     console.log('Month clicked:', { month, year });
     onChange(month, year);
+    // Reset animation state after animation completes
+    setTimeout(() => setIsAnimating(false), 500);
   };
 
   // Calculate how many months can fit in the container
@@ -75,33 +90,6 @@ export function MonthYearSelector({
       isCurrent: date.getMonth() === currentMonth && date.getFullYear() === currentYear,
     };
   });
-
-  // Dragging functionality
-  const handleMouseDown = (e: React.MouseEvent) => {
-    setIsDragging(true);
-    if (scrollContainerRef.current) {
-      setStartX(e.pageX - scrollContainerRef.current.offsetLeft);
-      setScrollLeft(scrollContainerRef.current.scrollLeft);
-    }
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
-    e.preventDefault();
-    if (scrollContainerRef.current) {
-      const x = e.pageX - scrollContainerRef.current.offsetLeft;
-      const walk = (x - startX) * 2;
-      scrollContainerRef.current.scrollLeft = scrollLeft - walk;
-    }
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  const handleMouseLeave = () => {
-    setIsDragging(false);
-  };
   
   return (
     <div className="flex items-center w-full">
@@ -109,18 +97,15 @@ export function MonthYearSelector({
         variant="outline"
         size="icon"
         onClick={handlePreviousMonth}
-        className="h-8 w-8 flex-shrink-0"
+        className="h-8 w-8 flex-shrink-0 transition-transform hover:scale-110 active:scale-95"
+        disabled={isAnimating}
       >
         <ChevronLeftIcon className="h-4 w-4" />
       </Button>
       
       <div 
         ref={scrollContainerRef}
-        className="flex overflow-hidden cursor-grab active:cursor-grabbing mx-2"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
+        className="flex overflow-hidden mx-2 scroll-smooth"
       >
         {months.map((item, index) => (
           <Button
@@ -128,10 +113,13 @@ export function MonthYearSelector({
             variant={item.isCurrent ? "default" : "ghost"}
             size="sm"
             data-current={item.isCurrent}
-            className={`mx-1 min-w-[100px] flex-shrink-0 ${
-              item.isCurrent ? "bg-primary text-primary-foreground" : ""
+            className={`mx-1 min-w-[100px] flex-shrink-0 transition-all duration-300 ${
+              item.isCurrent 
+                ? "bg-primary text-primary-foreground scale-105 shadow-md" 
+                : "hover:bg-accent hover:text-accent-foreground"
             }`}
             onClick={() => handleMonthClick(item.month, item.year)}
+            disabled={isAnimating}
           >
             {item.label}
           </Button>
@@ -142,7 +130,8 @@ export function MonthYearSelector({
         variant="outline"
         size="icon"
         onClick={handleNextMonth}
-        className="h-8 w-8 flex-shrink-0"
+        className="h-8 w-8 flex-shrink-0 transition-transform hover:scale-110 active:scale-95"
+        disabled={isAnimating}
       >
         <ChevronRightIcon className="h-4 w-4" />
       </Button>

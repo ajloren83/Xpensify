@@ -31,11 +31,13 @@ import {
     remaining: number;
     type: string; // 'expense' | 'income'
     category: string;
-    dueDate: string;
+    date: string;
+    dueDate?: string;
     status: string; // 'paid' | 'pending' | 'overdue'
     tag?: string;
     notes?: string;
     createdAt: string;
+    updatedAt: string;
   };
   
   export type RecurringExpense = {
@@ -81,8 +83,12 @@ import {
     pageSize: number = 10
   ) => {
     try {
+      console.log("Getting expenses for user:", userId);
+      
+      // Use the correct collection path
       let q = query(
-        collection(db, 'users', userId, 'expenses'),
+        collection(db, 'expenses'),
+        where('userId', '==', userId),
         orderBy('dueDate', 'desc')
       );
       
@@ -96,22 +102,85 @@ import {
       if (filters.status) {
         q = query(q, where('status', '==', filters.status));
       }
+      
+      // Handle date filtering with proper error handling
       if (filters.startDate && filters.endDate) {
+        try {
+          // Convert dates to Firestore Timestamps
+          const startTimestamp = Timestamp.fromDate(filters.startDate);
+          const endTimestamp = Timestamp.fromDate(filters.endDate);
+          
+          // Create a new query with date filters
+          q = query(
+            q,
+            where('dueDate', '>=', startTimestamp),
+            where('dueDate', '<=', endTimestamp)
+          );
+        } catch (dateError) {
+          console.error("Error filtering by date:", dateError);
+          // Continue without date filtering if there's an error
+        }
+      }
+      
+      if (filters.minAmount !== undefined && filters.maxAmount !== undefined) {
         q = query(
           q,
-          where('dueDate', '>=', filters.startDate.toISOString()),
-          where('dueDate', '<=', filters.endDate.toISOString())
+          where('amount', '>=', filters.minAmount),
+          where('amount', '<=', filters.maxAmount)
         );
       }
       
+      console.log("Executing Firestore query");
       const querySnapshot = await getDocs(q);
-      const expenses = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Expense[];
+      console.log(`Found ${querySnapshot.docs.length} expense documents`);
       
+      const expenses = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        try {
+          return {
+            id: doc.id,
+            userId: data.userId,
+            name: data.name,
+            amount: data.amount || 0,
+            toPay: data.toPay || 0,
+            willPay: data.willPay || 0,
+            remaining: data.remaining || 0,
+            type: data.type || 'expense',
+            category: data.category || 'other',
+            date: data.date ? (typeof data.date.toDate === 'function' ? data.date.toDate().toISOString() : data.date) : new Date().toISOString(),
+            dueDate: data.dueDate ? (typeof data.dueDate.toDate === 'function' ? data.dueDate.toDate().toISOString() : data.dueDate) : new Date().toISOString(),
+            status: data.status || 'pending',
+            tag: data.tag || '',
+            notes: data.notes || '',
+            createdAt: data.createdAt ? (typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate().toISOString() : data.createdAt) : new Date().toISOString(),
+            updatedAt: data.updatedAt ? (typeof data.updatedAt.toDate === 'function' ? data.updatedAt.toDate().toISOString() : data.updatedAt) : new Date().toISOString(),
+          } as Expense;
+        } catch (docError) {
+          console.error("Error processing expense document:", docError, data);
+          // Return a minimal valid expense object if there's an error
+          return {
+            id: doc.id,
+            userId: data.userId || userId,
+            name: data.name || 'Unknown Expense',
+            amount: 0,
+            toPay: 0,
+            willPay: 0,
+            remaining: 0,
+            type: 'expense',
+            category: 'other',
+            date: new Date().toISOString(),
+            dueDate: new Date().toISOString(),
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          } as Expense;
+        }
+      });
+      
+      console.log("Processed expenses:", expenses.length);
       return { success: true, expenses };
     } catch (error: any) {
+      console.error("Error getting expenses:", error);
       return { success: false, error: error.message };
     }
   };
@@ -149,7 +218,7 @@ import {
   // Update an expense
   export const updateExpense = async (userId: string, id: string, expenseData: Partial<Expense>) => {
     try {
-      await updateDoc(doc(db, 'users', userId, 'expenses', id), expenseData);
+      await updateDoc(doc(db, 'expenses', id), expenseData);
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -159,7 +228,7 @@ import {
   // Delete an expense
   export const deleteExpense = async (userId: string, id: string) => {
     try {
-      await deleteDoc(doc(db, 'users', userId, 'expenses', id));
+      await deleteDoc(doc(db, 'expenses', id));
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };

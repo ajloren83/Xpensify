@@ -2,25 +2,68 @@
 
 import * as React from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Toast } from "./toast";
-import { cn } from "@/lib/utils";
+import {
+  Toast,
+  ToastClose,
+  ToastProvider,
+  ToastViewport,
+  ToastType
+} from "./toast";
 
 export function Toaster() {
   const { toasts, dismiss } = useToast();
 
+  // Set up auto-dismiss for toasts with duration
+  React.useEffect(() => {
+    toasts.forEach((toast) => {
+      if (toast.duration && toast.open) {
+        const timer = setTimeout(() => {
+          dismiss(toast.id);
+        }, toast.duration);
+        
+        // Cleanup timer on unmount or when toast changes
+        return () => clearTimeout(timer);
+      }
+    });
+  }, [toasts, dismiss]);
+
+  // Helper function to determine toast type based on variant
+  const getToastType = (variant: string | undefined): ToastType => {
+    switch (variant) {
+      case "destructive":
+        return "error";
+      case "success":
+        return "success";
+      case "warning":
+        return "warning";
+      case "info":
+        return "info";
+      default:
+        return "default";
+    }
+  };
+
   return (
-    <div
-      className={cn(
-        "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]"
-      )}
-    >
-      {toasts.map(({ id, ...props }) => (
-        <Toast
-          key={id}
-          {...props}
-          onClose={() => dismiss(id)}
-        />
-      ))}
-    </div>
+    <ToastProvider>
+      {toasts.map(({ id, title, description, action, variant, ...props }) => {
+        // Ensure variant is a string before passing to getToastType
+        const variantStr = typeof variant === 'string' ? variant : undefined;
+        
+        return (
+          <Toast 
+            key={id} 
+            variant={variant}
+            toastType={getToastType(variantStr)}
+            title={title}
+            description={description}
+            action={action}
+            {...props}
+          >
+            <ToastClose onClick={() => dismiss(id)} />
+          </Toast>
+        );
+      })}
+      <ToastViewport />
+    </ToastProvider>
   );
-} 
+}

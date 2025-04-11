@@ -79,58 +79,93 @@ export default function ExpensesPage() {
   useEffect(() => {
     if (user) {
       loadExpenses();
-      loadAutoTags();
     }
-  }, [user, currentMonth, currentYear, filters]);
+  }, [user, currentMonth, currentYear]);
 
   const loadExpenses = async () => {
     if (!user) return;
     
     try {
       setIsLoading(true);
-      console.log("Loading expenses for month:", currentMonth, "year:", currentYear);
       
       // Calculate the correct date range for the selected month
       const startDate = new Date(currentYear, currentMonth, 1);
-      const endDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999);
+      startDate.setHours(0, 0, 0, 0);
       
-      console.log("Date range:", {
+      const endDate = new Date(currentYear, currentMonth + 1, 0);
+      endDate.setHours(23, 59, 59, 999);
+      
+      console.log("Loading expenses for date range:", {
         start: startDate.toISOString(),
-        end: endDate.toISOString()
+        end: endDate.toISOString(),
+        month: currentMonth,
+        year: currentYear
       });
       
-      const result = await getExpenses(user.uid, {
-        startDate,
-        endDate
-      });
-      
-      console.log("Firestore response:", result);
+      // Get expenses without date filtering first to ensure we get data
+      const result = await getExpenses(user.uid);
       
       if (result.success && result.expenses) {
+        console.log("Fetched expenses:", result.expenses.length);
+        
+        // Filter expenses by dueDate to ensure they belong to the selected month
+        // Use a more robust date parsing approach
         const filteredExpenses = result.expenses.filter(expense => {
-          const expenseDate = new Date(expense.dueDate);
-          const matchesMonth = expenseDate.getMonth() === currentMonth;
-          const matchesYear = expenseDate.getFullYear() === currentYear;
+          if (!expense.dueDate) return false;
           
-          console.log("Filtering expense:", {
-            name: expense.name,
-            date: expense.dueDate,
-            matchesMonth,
-            matchesYear
-          });
-          
-          return matchesMonth && matchesYear;
+          try {
+            // Ensure we have a valid date string
+            const dueDateStr = expense.dueDate as string;
+            const expenseDate = new Date(dueDateStr);
+            
+            // Check if the date is valid
+            if (isNaN(expenseDate.getTime())) {
+              console.error("Invalid date:", dueDateStr);
+              return false;
+            }
+            
+            return expenseDate.getMonth() === currentMonth && 
+                   expenseDate.getFullYear() === currentYear;
+          } catch (error) {
+            console.error("Error parsing date:", expense.dueDate, error);
+            return false;
+          }
         });
         
+        console.log("Filtered expenses for current month:", filteredExpenses.length);
         setExpenses(filteredExpenses);
-        console.log("Expenses loaded:", filteredExpenses.length);
+        
+        // If no expenses found for the current month, show a message
+        if (filteredExpenses.length === 0) {
+          toast({
+            title: "No expenses found",
+            description: `No expenses found for ${new Date(currentYear, currentMonth).toLocaleString('default', { month: 'long' })} ${currentYear}`,
+            variant: "default",
+            toastType: "info",
+            duration: 5000, // Auto-dismiss after 5 seconds
+          });
+        }
       } else {
         console.error("Error loading expenses:", result.error);
         setExpenses([]);
+        toast({
+          title: "Error loading expenses",
+          description: result.error || "An unknown error occurred",
+          variant: "destructive",
+          toastType: "error",
+          duration: 8000, // Auto-dismiss after 8 seconds for errors
+        });
       }
     } catch (error) {
       console.error("Error loading expenses:", error);
       setExpenses([]);
+      toast({
+        title: "Error loading expenses",
+        description: "An unexpected error occurred while loading expenses",
+        variant: "destructive",
+        toastType: "error",
+        duration: 8000, // Auto-dismiss after 8 seconds for errors
+      });
     } finally {
       setIsLoading(false);
     }
@@ -177,7 +212,8 @@ export default function ExpensesPage() {
           const carryForwards = expenses.filter(e => 
             e.name === expense.name && 
             e.id !== expense.id && 
-            new Date(e.dueDate) > new Date(expense.dueDate)
+            (e.dueDate && expense.dueDate) && // Check if both dates exist
+            new Date(e.dueDate as string) > new Date(expense.dueDate as string)
           );
           
           // Delete all carry forward expenses
@@ -189,6 +225,8 @@ export default function ExpensesPage() {
         toast({
           title: "Success",
           description: "Transaction deleted successfully",
+          toastType: "success",
+          duration: 5000, // Auto-dismiss after 5 seconds
         });
         
         // Reload expenses to update the UI
@@ -201,7 +239,9 @@ export default function ExpensesPage() {
       toast({
         title: "Error",
         description: "Failed to delete transaction",
-        variant: "destructive"
+        variant: "destructive",
+        toastType: "error",
+        duration: 8000, // Auto-dismiss after 8 seconds for errors
       });
     }
   };
@@ -224,13 +264,17 @@ export default function ExpensesPage() {
       toast({
         title: "Success",
         description: "Selected transactions deleted successfully",
+        toastType: "success",
+        duration: 5000, // Auto-dismiss after 5 seconds
       });
     } catch (error) {
       console.error("Error deleting selected expenses:", error);
       toast({
         title: "Error",
         description: "Failed to delete selected transactions",
-        variant: "destructive"
+        variant: "destructive",
+        toastType: "error",
+        duration: 8000, // Auto-dismiss after 8 seconds for errors
       });
     }
   };
@@ -263,6 +307,8 @@ export default function ExpensesPage() {
           toast({
             title: "Success",
             description: "Expense updated successfully",
+            toastType: "success",
+            duration: 5000, // Auto-dismiss after 5 seconds
           });
           loadExpenses();
         }
@@ -317,6 +363,8 @@ export default function ExpensesPage() {
           toast({
             title: "Success",
             description: "Expense added successfully",
+            toastType: "success",
+            duration: 5000, // Auto-dismiss after 5 seconds
           });
           loadExpenses();
         }
@@ -329,7 +377,9 @@ export default function ExpensesPage() {
       toast({
         title: "Error",
         description: "Failed to save expense",
-        variant: "destructive"
+        variant: "destructive",
+        toastType: "error",
+        duration: 8000, // Auto-dismiss after 8 seconds for errors
       });
     }
   };
@@ -338,7 +388,7 @@ export default function ExpensesPage() {
     console.log('Month/Year changed:', { month, year });
     setCurrentMonth(month);
     setCurrentYear(year);
-    // The useEffect with [user, currentMonth, currentYear, filters] dependency will automatically trigger loadExpenses
+    // The useEffect with [user, currentMonth, currentYear] dependency will automatically trigger loadExpenses
   };
 
   const clearFilters = () => {
@@ -351,20 +401,14 @@ export default function ExpensesPage() {
   };
 
   const filteredExpenses = expenses.filter(expense => {
+    if (!expense.dueDate) return false;
+    
     const expenseDate = new Date(expense.dueDate);
     const matchesMonth = expenseDate.getMonth() === currentMonth;
     const matchesYear = expenseDate.getFullYear() === currentYear;
     const matchesSearch = filters.search === "" || 
       expense.name.toLowerCase().includes(filters.search.toLowerCase()) ||
       expense.category.toLowerCase().includes(filters.search.toLowerCase());
-    
-    console.log("Filtering expense:", {
-      name: expense.name,
-      date: expense.dueDate,
-      matchesMonth,
-      matchesYear,
-      matchesSearch
-    });
     
     return matchesMonth && matchesYear && matchesSearch;
   });

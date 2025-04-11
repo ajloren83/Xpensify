@@ -6,21 +6,29 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(amount);
-}
-
-export function formatDate(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
+// Format a date string to a readable format
+export const formatDate = (dateString?: string | Date): string => {
+  if (!dateString) return 'N/A';
+  
+  try {
+    const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      console.error("Invalid date in formatDate:", dateString);
+      return 'Invalid Date';
+    }
+    
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  } catch (error) {
+    console.error("Error formatting date:", error);
+    return 'Error';
+  }
+};
 
 export function formatDateShort(dateString: string): string {
   const date = new Date(dateString);
@@ -111,4 +119,11 @@ export function formatPercentage(value: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(value / 100);
+}
+
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(amount);
 }
