@@ -21,6 +21,7 @@ import {
   import { ref, set, get, remove, update } from 'firebase/database';
   import { db, rtdb } from './firebase';
   import { auth } from './firebase';
+  import { updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
   
   // Types for our data models
   export interface Expense {
@@ -236,16 +237,9 @@ import {
       const startMonth = startDate.getMonth();
       const startYear = startDate.getFullYear();
       
-      // Only generate expenses up to 12 months in the future
-      const maxFutureMonths = 12;
-      const endMonth = Math.min(
-        currentMonth + maxFutureMonths,
-        endDate ? endDate.getMonth() : currentMonth + maxFutureMonths
-      );
-      const endYear = Math.min(
-        currentYear + Math.floor((currentMonth + maxFutureMonths) / 12),
-        endDate ? endDate.getFullYear() : currentYear + Math.floor((currentMonth + maxFutureMonths) / 12)
-      );
+      // Get end date or calculate based on max future months
+      const endMonth = endDate ? endDate.getMonth() : currentMonth + 12;
+      const endYear = endDate ? endDate.getFullYear() : currentYear + Math.floor((currentMonth + 12) / 12);
 
       // Generate expenses for each month in the range
       for (let year = startYear; year <= endYear; year++) {
@@ -263,9 +257,9 @@ import {
             continue;
           }
 
-          // Skip if this month is more than 12 months in the future
+          // Skip if this month is more than 12 months in the future from current date
           const monthsInFuture = (year - currentYear) * 12 + (month - currentMonth);
-          if (monthsInFuture > maxFutureMonths) {
+          if (monthsInFuture > 12) {
             continue;
           }
 
@@ -721,38 +715,146 @@ import {
     }
   };
 
-  // User profile functions
-  export const updateUserProfile = async (userId: string, profileData: {
-    displayName?: string;
-    photoURL?: string;
-  }) => {
+  // Profile Management Functions
+  export async function updateUserProfile(
+    userId: string,
+    data: {
+      displayName?: string;
+      photoURL?: string;
+    }
+  ): Promise<{ success: boolean; error?: string }> {
     try {
-      await updateDoc(doc(db, 'users', userId), profileData);
+      const userRef = doc(db, `users/${userId}`);
+      await updateDoc(userRef, {
+        ...data,
+        updatedAt: new Date().toISOString(),
+      });
       return { success: true };
     } catch (error: any) {
+      console.error("Error updating user profile:", error);
       return { success: false, error: error.message };
+    }
+  }
+
+  export async function updateUserEmail(
+    userId: string,
+    newEmail: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error("No authenticated user");
+      }
+
+      // Update email in Firebase Auth
+      await updateEmail(user, newEmail);
+
+      // Update email in Firestore
+      const userRef = doc(db, `users/${userId}`);
+      await updateDoc(userRef, {
+        email: newEmail,
+        updatedAt: new Date().toISOString(),
+      });
+
+      return { success: true };
+    } catch (error: any) {
+      console.error("Error updating user email:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  export async function updateUserPassword(
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const user = auth.currentUser;
+      if (!user || !user.email) {
+        throw new Error("No authenticated user");
+      }
+
+      // Reauthenticate user
+      const credential = EmailAuthProvider.credential(
+        user.email,
+        currentPassword
+      );
+      await reauthenticateWithCredential(user, credential);
+
+      // Update password
+      await updatePassword(user, newPassword);
+
+      return { success: true };
+    } catch (error: any) {
+      console.error("Error updating password:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // User settings functions
+  export const getUserSettings = async (userId: string) => {
+    try {
+      console.log('Getting settings for user:', userId);
+      const userRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        console.log('No user document found');
+        return null;
+      }
+      
+      const userData = userDoc.data();
+      console.log('User data:', userData);
+      return userData?.settings || null;
+    } catch (error: any) {
+      console.error("Error getting user settings:", error);
+      return null;
     }
   };
 
-  // User settings functions
   export const updateUserSettings = async (userId: string, settingsData: {
-    salaryAmount?: number;
-    salaryDate?: number;
-    notifications?: {
-      salary?: boolean;
-      expenses?: boolean;
-      recurring?: boolean;
-    };
     display?: {
       currency?: string;
       language?: string;
       darkMode?: boolean;
     };
+    notifications?: {
+      salary?: boolean;
+      expenses?: boolean;
+      recurring?: boolean;
+    };
   }) => {
     try {
-      await updateDoc(doc(db, 'users', userId), { settings: settingsData });
+      console.log('Updating settings for user:', userId, 'with data:', settingsData);
+      const userRef = doc(db, 'users', userId);
+      
+      // First get the current settings
+      const userDoc = await getDoc(userRef);
+      const currentSettings = userDoc.exists() ? userDoc.data()?.settings || {} : {};
+      
+      // Merge the new settings with existing ones
+      const mergedSettings = {
+        display: {
+          ...currentSettings.display,
+          ...settingsData.display,
+        },
+        notifications: {
+          ...currentSettings.notifications,
+          ...settingsData.notifications,
+        },
+      };
+      
+      console.log('Merged settings:', mergedSettings);
+      
+      // Update the settings in Firestore
+      await updateDoc(userRef, { 
+        settings: mergedSettings,
+        updatedAt: new Date().toISOString(),
+      });
+      
+      console.log('Settings updated successfully');
       return { success: true };
     } catch (error: any) {
+      console.error("Error updating user settings:", error);
       return { success: false, error: error.message };
     }
   };
@@ -912,16 +1014,9 @@ import {
           const startMonth = startDate.getMonth();
           const startYear = startDate.getFullYear();
           
-          // Only generate expenses up to 12 months in the future
-          const maxFutureMonths = 12;
-          const endMonth = Math.min(
-            currentMonth + maxFutureMonths,
-            endDate ? endDate.getMonth() : currentMonth + maxFutureMonths
-          );
-          const endYear = Math.min(
-            currentYear + Math.floor((currentMonth + maxFutureMonths) / 12),
-            endDate ? endDate.getFullYear() : currentYear + Math.floor((currentMonth + maxFutureMonths) / 12)
-          );
+          // Get end date or calculate based on max future months
+          const endMonth = endDate ? endDate.getMonth() : currentMonth + 12;
+          const endYear = endDate ? endDate.getFullYear() : currentYear + Math.floor((currentMonth + 12) / 12);
 
           // Generate expenses for each month in the range
           for (let year = startYear; year <= endYear; year++) {
@@ -939,9 +1034,9 @@ import {
                 continue;
               }
 
-              // Skip if this month is more than 12 months in the future
+              // Skip if this month is more than 12 months in the future from current date
               const monthsInFuture = (year - currentYear) * 12 + (month - currentMonth);
-              if (monthsInFuture > maxFutureMonths) {
+              if (monthsInFuture > 12) {
                 continue;
               }
 

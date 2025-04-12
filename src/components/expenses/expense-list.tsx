@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { LayoutGrid, Table as TableIcon, Trash2, Edit2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { useSettings } from '@/lib/settings-context';
 
 interface ExpenseListProps {
   expenses: Expense[];
@@ -27,26 +28,34 @@ export function ExpenseList({
   onEdit,
 }: ExpenseListProps) {
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const { settings } = useSettings();
 
   const handleDeleteSelected = () => {
     onDelete(selectedExpenses);
   };
 
-  const getStatusColor = (status: Expense['status']) => {
-    switch (status) {
-      case 'paid':
-        return 'bg-green-500/10 text-green-500';
-      case 'pending':
-        return 'bg-yellow-500/10 text-yellow-500';
-      case 'overdue':
-        return 'bg-red-500/10 text-red-500';
+  const getTypeColor = (type: string) => {
+    switch (type) {
+      case 'income':
+        return 'bg-green-100 text-green-700';
+      case 'expense':
+        return 'bg-red-100 text-red-700';
       default:
-        return 'bg-gray-500/10 text-gray-500';
+        return 'bg-gray-100 text-gray-700';
     }
   };
 
-  const getTypeColor = (type: Expense['type']) => {
-    return type === 'income' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500';
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'paid':
+        return 'bg-green-100 text-green-700';
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-700';
+      case 'overdue':
+        return 'bg-red-100 text-red-700';
+      default:
+        return 'bg-gray-100 text-gray-700';
+    }
   };
 
   if (viewMode === 'grid') {
@@ -118,19 +127,19 @@ export function ExpenseList({
                 <div className="space-y-1">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Amount:</span>
-                    <span className="font-medium">{formatCurrency(expense.amount)}</span>
+                    <span className="font-medium">{formatCurrency(expense.amount, settings.display.currency)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">To Pay:</span>
-                    <span className="font-medium">{formatCurrency(expense.toPay)}</span>
+                    <span className="font-medium">{formatCurrency(expense.toPay, settings.display.currency)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Will Pay:</span>
-                    <span className="font-medium">{formatCurrency(expense.willPay)}</span>
+                    <span className="font-medium">{formatCurrency(expense.willPay, settings.display.currency)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Remaining:</span>
-                    <span className="font-medium">{formatCurrency(expense.remaining)}</span>
+                    <span className="font-medium">{formatCurrency(expense.remaining, settings.display.currency)}</span>
                   </div>
                 </div>
               </CardContent>
@@ -216,10 +225,10 @@ export function ExpenseList({
                     {expense.status}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-right">{formatCurrency(expense.amount)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(expense.toPay)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(expense.willPay)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(expense.remaining)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(expense.amount, settings.display.currency)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(expense.toPay, settings.display.currency)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(expense.willPay, settings.display.currency)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(expense.remaining, settings.display.currency)}</TableCell>
                 <TableCell>
                   <Button
                     variant="ghost"

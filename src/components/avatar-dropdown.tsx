@@ -29,9 +29,11 @@ export function AvatarDropdown() {
     }
   };
 
-  const userInitials = user?.email
-    ? user.email.substring(0, 2).toUpperCase()
-    : "??";
+  const userInitials = user?.displayName
+    ? user.displayName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
+    : user?.email
+      ? user.email.substring(0, 2).toUpperCase()
+      : "??";
 
   return (
     <>
@@ -39,7 +41,7 @@ export function AvatarDropdown() {
         <DropdownMenuTrigger asChild>
           <button className="flex items-center gap-2 rounded-full outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
             <Avatar className="h-8 w-8">
-              <AvatarImage src={user?.photoURL || ""} alt={user?.email || ""} />
+              <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || user?.email || ""} />
               <AvatarFallback>{userInitials}</AvatarFallback>
             </Avatar>
             <div className="hidden md:flex flex-col items-start">
@@ -55,7 +57,7 @@ export function AvatarDropdown() {
         <DropdownMenuContent align="end" className="w-56">
           <div className="flex items-center gap-2 p-2">
             <Avatar className="h-10 w-10">
-              <AvatarImage src={user?.photoURL || ""} alt={user?.email || ""} />
+              <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || user?.email || ""} />
               <AvatarFallback>{userInitials}</AvatarFallback>
             </Avatar>
             <div className="flex flex-col">

@@ -5,23 +5,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/lib/auth-context";
+import { useSettings } from "@/lib/settings-context";
 import { useToast } from "@/components/ui/use-toast";
 import { updateUserSalarySettings, getUserSalarySettings } from "@/lib/db";
 
 interface SalarySettings {
   amount: number;
   creditDate: number; // 1-31 for day of month, or -1 for month-end
-  currency: string;
 }
 
 export function SalarySettings() {
   const { user } = useAuth();
+  const { settings } = useSettings();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState<SalarySettings>({
     amount: 0,
     creditDate: 15,
-    currency: "USD",
   });
 
   useEffect(() => {
@@ -31,7 +31,10 @@ export function SalarySettings() {
       try {
         const settings = await getUserSalarySettings(user.uid);
         if (settings) {
-          setFormData(settings);
+          setFormData({
+            amount: settings.amount,
+            creditDate: settings.creditDate,
+          });
         }
       } catch (error) {
         console.error("Error loading salary settings:", error);
@@ -52,7 +55,10 @@ export function SalarySettings() {
     try {
       if (!user) return;
 
-      await updateUserSalarySettings(user.uid, formData);
+      await updateUserSalarySettings(user.uid, {
+        ...formData,
+        currency: settings.display.currency
+      });
 
       toast({
         title: "Settings updated",
@@ -128,28 +134,6 @@ export function SalarySettings() {
                     {option.label}
                   </SelectItem>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="currency">Currency</Label>
-            <Select
-              value={formData.currency}
-              onValueChange={(value) => handleChange("currency", value)}
-            >
-              <SelectTrigger id="currency">
-                <SelectValue placeholder="Select currency" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="USD">USD - US Dollar</SelectItem>
-                <SelectItem value="EUR">EUR - Euro</SelectItem>
-                <SelectItem value="GBP">GBP - British Pound</SelectItem>
-                <SelectItem value="JPY">JPY - Japanese Yen</SelectItem>
-                <SelectItem value="CAD">CAD - Canadian Dollar</SelectItem>
-                <SelectItem value="AUD">AUD - Australian Dollar</SelectItem>
-                <SelectItem value="INR">INR - Indian Rupee</SelectItem>
-                <SelectItem value="CNY">CNY - Chinese Yuan</SelectItem>
               </SelectContent>
             </Select>
           </div>

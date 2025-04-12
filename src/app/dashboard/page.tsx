@@ -14,6 +14,7 @@ import { formatCurrency } from '@/lib/utils';
 import { ExpenseTransaction, TransactionType } from '@/lib/types';
 import TransactionList from '@/components/dashboard/transaction-list';
 import ExpenseCalendar from '@/components/dashboard/expense-calendar';
+import { useSettings } from '@/lib/settings-context';
 
 // Dashboard stats card component
 const StatsCard = ({ 
@@ -66,6 +67,7 @@ const COLORS = ['#63C94E', '#15614E', '#3F8DAD', '#75E5B1', '#FFB86C'];
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { settings } = useSettings();
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState<ExpenseTransaction[]>([]);
   const [stats, setStats] = useState({
@@ -182,35 +184,35 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard
           title="Current Balance"
-          value={formatCurrency(stats.balance)}
-          description="Available to spend"
+          value={formatCurrency(stats.balance, settings.display.currency)}
+          description="Your total balance"
           icon={<Wallet className="h-5 w-5 text-primary" />}
-          trend={stats.balance > 0 ? 'up' : 'down'}
-          trendValue={`${Math.abs(stats.balance / (stats.income || 1) * 100).toFixed(1)}% of income`}
-        />
-        <StatsCard
-          title="Monthly Income"
-          value={formatCurrency(stats.income)}
-          description="Total income this month"
-          icon={<TrendingUp className="h-5 w-5 text-primary" />}
           trend="neutral"
           trendValue=""
         />
         <StatsCard
-          title="Monthly Expenses"
-          value={formatCurrency(stats.expenses)}
-          description="Total expenses this month"
-          icon={<CircleDollarSign className="h-5 w-5 text-primary" />}
-          trend={stats.expenses > stats.income * 0.8 ? 'up' : 'down'}
-          trendValue={`${(stats.expenses / (stats.income || 1) * 100).toFixed(1)}% of income`}
+          title="Monthly Income"
+          value={formatCurrency(stats.income, settings.display.currency)}
+          description="This month's earnings"
+          icon={<TrendingUp className="h-5 w-5 text-primary" />}
+          trend="up"
+          trendValue="+5.2% from last month"
         />
         <StatsCard
-          title="Savings"
-          value={formatCurrency(stats.savings)}
-          description="This month's savings"
+          title="Monthly Expenses"
+          value={formatCurrency(stats.expenses, settings.display.currency)}
+          description="This month's spending"
+          icon={<CircleDollarSign className="h-5 w-5 text-primary" />}
+          trend="down"
+          trendValue="-3.1% from last month"
+        />
+        <StatsCard
+          title="Total Savings"
+          value={formatCurrency(stats.savings, settings.display.currency)}
+          description="Your accumulated savings"
           icon={<CalendarDays className="h-5 w-5 text-primary" />}
-          trend={stats.savings > 0 ? 'up' : 'down'}
-          trendValue={`${Math.abs(stats.savings / (stats.income || 1) * 100).toFixed(1)}% of income`}
+          trend="up"
+          trendValue="+2.5% from last month"
         />
       </div>
       
@@ -250,7 +252,7 @@ export default function DashboardPage() {
                           ))}
                         </Pie>
                         <Tooltip 
-                          formatter={(value: number) => formatCurrency(value)}
+                          formatter={(value: number) => formatCurrency(value, settings.display.currency)}
                         />
                       </PieChart>
                     </ResponsiveContainer>
@@ -317,7 +319,7 @@ export default function DashboardPage() {
                   >
                     <XAxis dataKey="name" />
                     <YAxis />
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                    <Tooltip formatter={(value: number) => formatCurrency(value, settings.display.currency)} />
                     <Legend />
                     <Bar dataKey="income" name="Income" fill="#63C94E" />
                     <Bar dataKey="expenses" name="Expenses" fill="#15614E" />

@@ -19,18 +19,16 @@ export type ExpenseStatus = "pending" | "paid" | "overdue";
 
 export interface Expense {
   id: string;
-  userId: string;
   name: string;
   amount: number;
-  category: ExpenseCategory;
+  type: 'income' | 'expense';
+  category: string;
   date: string;
+  status: 'paid' | 'pending' | 'overdue';
+  toPay: number;
+  willPay: number;
+  remaining: number;
   notes?: string;
-  status: ExpenseStatus;
-  createdAt: string;
-  updatedAt: string;
-  tags?: string[];
-  isRecurring?: boolean;
-  recurringExpenseId?: string;
 }
 
 export interface RecurringExpense {

@@ -1,9 +1,95 @@
 // lib/utils.ts
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { useSettings } from "@/lib/settings-context";
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
+// Map currency codes to their appropriate locales
+const currencyToLocale: Record<string, string> = {
+  'USD': 'en-US',
+  'EUR': 'de-DE',
+  'GBP': 'en-GB',
+  'JPY': 'ja-JP',
+  'INR': 'en-IN',
+  'CAD': 'en-CA',
+  'AUD': 'en-AU',
+  'CNY': 'zh-CN'
+};
+
+// Supported currencies for type checking
+type SupportedCurrency = keyof typeof currencyToLocale;
+
+// Initialize storage listener for settings changes
+if (typeof window !== 'undefined') {
+  // Listen for storage changes (for cross-tab synchronization)
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'user-settings') {
+      console.log('Currency settings changed in another tab');
+    }
+  });
+}
+
+/**
+ * Get the current active currency from various sources
+ * Order of precedence:
+ * 1. Explicitly provided currency
+ * 2. User settings in localStorage
+ * 3. Settings context
+ */
+function getActiveCurrency(explicitCurrency?: string): string {
+  // Priority 1: Use explicitly provided currency if valid
+  if (explicitCurrency && explicitCurrency in currencyToLocale) {
+    return explicitCurrency;
+  }
+  
+  if (typeof window === 'undefined') {
+    // For SSR, we need to use a default that matches our settings context
+    return 'INR';
+  }
+  
+  try {
+    // Priority 2: Check settings in localStorage
+    const savedSettings = localStorage.getItem('user-settings');
+    if (savedSettings) {
+      const settings = JSON.parse(savedSettings);
+      const settingsCurrency = settings?.display?.currency;
+      if (settingsCurrency && settingsCurrency in currencyToLocale) {
+        return settingsCurrency;
+      }
+    }
+  } catch (e) {
+    console.error('Error retrieving currency preference:', e);
+  }
+  
+  // Priority 3: Use settings from context
+  const { settings } = useSettings();
+  return settings.display.currency;
+}
+
+/**
+ * Format a currency amount with the appropriate currency symbol and locale
+ */
+export function formatCurrency(amount: number, currency: string): string {
+  try {
+    const locale = currencyToLocale[currency] || 'en-IN';
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: currency,
+    }).format(amount);
+  } catch (error) {
+    console.error('Error formatting currency:', error);
+    return amount.toString();
+  }
+}
+
+/**
+ * Hook for using currency formatting with current settings
+ */
+export function useFormatCurrency() {
+  const { settings } = useSettings();
+  
+  return (amount: number): string => {
+    return formatCurrency(amount, settings.display.currency);
+  };
 }
 
 // Format a date string to a readable format
@@ -121,9 +207,6 @@ export function formatPercentage(value: number): string {
   }).format(value / 100);
 }
 
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(amount);
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
 }

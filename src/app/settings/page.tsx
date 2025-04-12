@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useSettings } from "@/lib/settings-context"; // Import the settings context
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,25 +10,32 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { updateUserProfile, updateUserSettings } from "@/lib/db";
-import { LogOutIcon, SaveIcon, EditIcon } from "lucide-react";
+import { updateUserProfile, updateUserSettings, updateUserEmail, updateUserPassword, getUserSettings } from "@/lib/db";
+import { LogOutIcon, SaveIcon, EditIcon, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useRouter } from "next/navigation";
 import { User } from "firebase/auth";
+import { toast } from 'sonner';
 
 export default function SettingsPage() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateProfile, deleteProfileImage } = useAuth();
+  const { settings, setSettings } = useSettings(); // Get the settings from the context
   const { toast } = useToast();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("profile");
   const [isLoading, setIsLoading] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // Profile state
-  const [fullName, setFullName] = useState(user?.displayName || "");
+  const [displayName, setDisplayName] = useState(user?.displayName || "");
   const [email, setEmail] = useState(user?.email || "");
-  const [avatar, setAvatar] = useState<string | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [photoURL, setPhotoURL] = useState<string | null>(user?.photoURL || null);
+  const [isEditing, setIsEditing] = useState(true);
   
   // Salary settings
   const [salaryAmount, setSalaryAmount] = useState(0);
@@ -39,29 +47,158 @@ export default function SettingsPage() {
   const [notifyRecurring, setNotifyRecurring] = useState(true);
   
   // Display settings
-  const [currency, setCurrency] = useState("USD");
   const [language, setLanguage] = useState("en");
   const [darkMode, setDarkMode] = useState(true);
 
-  const handleSaveProfile = async () => {
+  useEffect(() => {
+    if (user) {
+      setDisplayName(user.displayName || "");
+      setEmail(user.email || "");
+      setPhotoURL(user.photoURL || "");
+      loadUserSettings();
+    }
+  }, [user]);
+
+  const loadUserSettings = async () => {
     if (!user) return;
     
-    setIsLoading(true);
     try {
-      await updateUserProfile(user.uid, {
-        displayName: fullName,
-        photoURL: avatar || undefined,
-      });
-      
-      toast({
-        title: "Profile updated",
-        description: "Your profile has been successfully updated.",
-      });
+      const userSettings = await getUserSettings(user.uid);
+      if (userSettings) {
+        setLanguage(userSettings.display?.language || "en");
+        setDarkMode(userSettings.display?.darkMode ?? true);
+      }
     } catch (error) {
-      console.error("Error updating profile:", error);
+      console.error("Error loading user settings:", error);
+    }
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
       toast({
         title: "Error",
-        description: "Failed to update your profile. Please try again.",
+        description: "Image size should be less than 2MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      // Store the Base64 string in state
+      setPhotoURL(base64String);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleProfileUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Ensure we have a display name
+      if (!displayName.trim()) {
+        throw new Error('Display name cannot be empty');
+      }
+
+      const result = await updateProfile({
+        displayName: displayName.trim(),
+        photoURL: photoURL || null,
+      });
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Profile updated successfully",
+        });
+        // Update local state with the new values
+        setDisplayName(displayName.trim());
+        setPhotoURL(photoURL);
+      } else {
+        throw new Error(result.error || 'Failed to update profile');
+      }
+    } catch (err: any) {
+      setError(err.message);
+      toast({
+        title: "Error",
+        description: err.message || "Failed to update profile",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEmailUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await updateUserEmail(user.uid, email);
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Email updated successfully",
+        });
+        setIsEditing(false);
+      } else {
+        throw new Error(result.error || 'Failed to update email');
+      }
+    } catch (err: any) {
+      setError(err.message);
+      toast({
+        title: "Error",
+        description: "Failed to update email",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePasswordUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    if (newPassword !== confirmPassword) {
+      setError('New passwords do not match');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await updateUserPassword(currentPassword, newPassword);
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Password updated successfully",
+        });
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        throw new Error(result.error || 'Failed to update password');
+      }
+    } catch (err: any) {
+      setError(err.message);
+      toast({
+        title: "Error",
+        description: "Failed to update password",
         variant: "destructive",
       });
     } finally {
@@ -73,31 +210,36 @@ export default function SettingsPage() {
     if (!user) return;
     
     setIsLoading(true);
+    setError(null);
+    
     try {
       await updateUserSettings(user.uid, {
-        salaryAmount,
-        salaryDate: parseInt(salaryDate),
+        display: {
+          language,
+          darkMode,
+        },
         notifications: {
           salary: notifySalary,
           expenses: notifyExpenses,
           recurring: notifyRecurring,
         },
-        display: {
-          currency,
-          language,
-          darkMode,
-        },
       });
       
       toast({
-        title: "Settings updated",
-        description: "Your settings have been successfully updated.",
+        title: "Success",
+        description: "Settings updated successfully",
       });
+      
+      // Force refresh of currency settings in localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('xpensify-currency', settings.display.currency);
+      }
     } catch (error) {
       console.error("Error updating settings:", error);
+      setError("Failed to update settings. Please try again.");
       toast({
         title: "Error",
-        description: "Failed to update your settings. Please try again.",
+        description: "Failed to update settings",
         variant: "destructive",
       });
     } finally {
@@ -107,22 +249,54 @@ export default function SettingsPage() {
 
   const handleLogout = async () => {
     try {
-      await logout();
-      router.push("/auth/login");
+      const result = await logout();
+      if (result.success) {
+        router.push('/auth/login');
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to log out",
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       console.error("Error signing out:", error);
+      toast({
+        title: "Error",
+        description: "Failed to log out",
+        variant: "destructive",
+      });
     }
   };
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setAvatar(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+  const handleDeleteImage = async () => {
+    if (!user) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await deleteProfileImage();
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Profile image deleted successfully",
+        });
+        setPhotoURL(null);
+      } else {
+        throw new Error(result.error || 'Failed to delete profile image');
+      }
+    } catch (err: any) {
+      setError(err.message);
+      toast({
+        title: "Error",
+        description: err.message || "Failed to delete profile image",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -136,9 +310,9 @@ export default function SettingsPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground">
           <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="salary">Salary Settings</TabsTrigger>
+          <TabsTrigger value="salary">Salary</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
-          <TabsTrigger value="display">Display Settings</TabsTrigger>
+          <TabsTrigger value="display">Display</TabsTrigger>
         </TabsList>
         
         {/* Tab heading */}
@@ -155,46 +329,58 @@ export default function SettingsPage() {
         <div className="mt-6">
           <TabsContent value="profile" className="space-y-6">
             <div className="space-y-6">
-              <div className="flex items-start">
+              <div className="flex items-center gap-4">
                 <div className="relative">
                   <div className="h-24 w-24 rounded-full overflow-hidden bg-muted">
-                    {avatar ? (
+                    {photoURL ? (
                       <img 
-                        src={avatar} 
+                        src={photoURL || undefined} 
                         alt="Profile" 
                         className="h-full w-full object-cover"
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-muted-foreground text-xl font-medium">
-                        {fullName.charAt(0).toUpperCase()}
+                        {displayName.charAt(0).toUpperCase()}
                       </div>
                     )}
                   </div>
-                  <div className="absolute bottom-0 right-0 bg-primary rounded-full p-1.5 cursor-pointer hover:bg-primary/90">
-                    <Input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleAvatarChange}
-                      className="hidden"
-                      id="avatar-upload"
-                    />
-                    <Label 
-                      htmlFor="avatar-upload" 
-                      className="cursor-pointer"
+                </div>
+                <div className="flex flex-row gap-2">
+                  <Button
+                    variant="outline"
+                    className="w-40"
+                    onClick={() => document.getElementById('profile-image')?.click()}
+                  >
+                    <EditIcon className="mr-2 h-4 w-4" />
+                    {user?.photoURL ? "Change Photo" : "Upload Photo"}
+                  </Button>
+                  {user?.photoURL && (
+                    <Button
+                      variant="outline"
+                      className="w-40 text-destructive hover:text-destructive"
+                      onClick={handleDeleteImage}
                     >
-                      <EditIcon className="h-4 w-4 text-primary-foreground" />
-                    </Label>
-                  </div>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Remove Photo
+                    </Button>
+                  )}
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    id="profile-image"
+                  />
                 </div>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="fullName">Full Name</Label>
+                  <Label htmlFor="displayName">Display Name</Label>
                   <Input
-                    id="fullName"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
+                    id="displayName"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
                   />
                 </div>
                 
@@ -219,7 +405,7 @@ export default function SettingsPage() {
                 <LogOutIcon className="mr-2 h-4 w-4" />
                 Logout
               </Button>
-              <Button onClick={handleSaveProfile} disabled={isLoading}>
+              <Button onClick={handleProfileUpdate} disabled={isLoading}>
                 <SaveIcon className="mr-2 h-4 w-4" />
                 Save Changes
               </Button>
@@ -317,7 +503,15 @@ export default function SettingsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="currency">Currency</Label>
-                <Select value={currency} onValueChange={setCurrency}>
+                <Select value={settings.display.currency} onValueChange={(value) => {
+                  setSettings({
+                    ...settings,
+                    display: {
+                      ...settings.display,
+                      currency: value,
+                    },
+                  });
+                }}>
                   <SelectTrigger id="currency">
                     <SelectValue placeholder="Select currency" />
                   </SelectTrigger>
@@ -325,7 +519,6 @@ export default function SettingsPage() {
                     <SelectItem value="USD">USD ($)</SelectItem>
                     <SelectItem value="EUR">EUR (€)</SelectItem>
                     <SelectItem value="GBP">GBP (£)</SelectItem>
-                    <SelectItem value="JPY">JPY (¥)</SelectItem>
                     <SelectItem value="INR">INR (₹)</SelectItem>
                   </SelectContent>
                 </Select>
@@ -333,7 +526,15 @@ export default function SettingsPage() {
               
               <div className="grid gap-2">
                 <Label htmlFor="language">Language</Label>
-                <Select value={language} onValueChange={setLanguage}>
+                <Select value={settings.display.language} onValueChange={(value) => {
+                  setSettings({
+                    ...settings,
+                    display: {
+                      ...settings.display,
+                      language: value,
+                    },
+                  });
+                }}>
                   <SelectTrigger id="language">
                     <SelectValue placeholder="Select language" />
                   </SelectTrigger>
@@ -349,15 +550,19 @@ export default function SettingsPage() {
             </div>
             
             <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Dark Mode</Label>
-                <p className="text-sm text-muted-foreground">
-                  Enable dark mode for the application
-                </p>
-              </div>
+              <Label htmlFor="darkMode">Dark Mode</Label>
               <Switch
-                checked={darkMode}
-                onCheckedChange={setDarkMode}
+                id="darkMode"
+                checked={settings.display.darkMode}
+                onCheckedChange={(checked) => {
+                  setSettings({
+                    ...settings,
+                    display: {
+                      ...settings.display,
+                      darkMode: checked,
+                    },
+                  });
+                }}
               />
             </div>
             

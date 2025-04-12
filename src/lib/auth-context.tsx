@@ -1,30 +1,37 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { 
+import {
   User,
+  onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
-  onAuthStateChanged,
   sendPasswordResetEmail,
   sendEmailVerification,
   signInWithPopup,
   GoogleAuthProvider,
-  UserCredential
+  updateProfile,
 } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
 import Cookies from 'js-cookie';
+import { db } from './firebase';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signup: (email: string, password: string, displayName: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<{ success: boolean; error?: string }>;
   resetPassword: (email: string) => Promise<void>;
   verifyEmail: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  updateProfile: (data: { 
+    displayName: string; 
+    photoURL: string | null | undefined;
+  }) => Promise<{ success: boolean; error?: string }>;
+  deleteProfileImage: () => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -34,14 +41,30 @@ export const useAuth = () => useContext(AuthContext);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
     console.log("AuthProvider: Setting up auth state listener");
     
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log("AuthProvider: Auth state changed", user ? "User logged in" : "No user");
-      setUser(user);
+      if (user) {
+        // Get the latest user data from Firestore
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          // Update the user object with Firestore data
+          setUser({
+            ...user,
+            displayName: userData.displayName || user.displayName,
+            photoURL: userData.photoURL || user.photoURL,
+          });
+        } else {
+          setUser(user);
+        }
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
       
       // Set or remove auth cookie based on user state
       if (user) {
@@ -51,9 +74,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Remove auth cookie when user logs out
         Cookies.remove('auth');
       }
-      
-      setLoading(false);
-      setInitialized(true);
     });
 
     return () => {
@@ -62,83 +82,142 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const signIn = async (email: string, password: string) => {
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // Cookie will be set by the onAuthStateChanged listener
-    } catch (error: any) {
-      // Map Firebase error codes to user-friendly messages
-      const errorMessage = (() => {
-        switch (error.code) {
-          case 'auth/invalid-email':
-            return 'Invalid email address';
-          case 'auth/user-disabled':
-            return 'This account has been disabled';
-          case 'auth/user-not-found':
-            return 'No account found with this email';
-          case 'auth/wrong-password':
-            return 'Incorrect password';
-          case 'auth/too-many-requests':
-            return 'Too many failed attempts. Please try again later';
-          default:
-            return 'Failed to sign in. Please try again';
-        }
-      })();
-      throw new Error(errorMessage);
-    }
-  };
-
-  const signUp = async (email: string, password: string) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    await sendEmailVerification(userCredential.user);
-    // Cookie will be set by the onAuthStateChanged listener
-  };
-
-  const logout = async () => {
-    await signOut(auth);
-    // Cookie will be removed by the onAuthStateChanged listener
-  };
-
-  const resetPassword = async (email: string) => {
-    await sendPasswordResetEmail(auth, email);
-  };
-
-  const verifyEmail = async () => {
-    if (user) {
-      await sendEmailVerification(user);
-    }
-  };
-
-  const signInWithGoogle = async () => {
-    try {
-      console.log("Attempting to sign in with Google");
-      await signInWithPopup(auth, googleProvider);
-      console.log("Google sign in successful");
-      // Cookie will be set by the onAuthStateChanged listener
-    } catch (error: any) {
-      console.error("Google sign in error details:", {
-        code: error.code,
-        message: error.message,
-        fullError: error
-      });
-      throw error;
-    }
-  };
-
   const value = {
     user,
     loading,
-    signIn,
-    signUp,
-    logout,
-    resetPassword,
-    verifyEmail,
-    signInWithGoogle,
+    login: async (email: string, password: string) => {
+      try {
+        const result = await signInWithEmailAndPassword(auth, email, password);
+        setUser(result.user);
+        return { success: true };
+      } catch (error: any) {
+        return { success: false, error: error.message };
+      }
+    },
+    signup: async (email: string, password: string, displayName: string) => {
+      try {
+        const result = await createUserWithEmailAndPassword(auth, email, password);
+        await updateProfile(result.user, { displayName });
+        await setDoc(doc(db, 'users', result.user.uid), {
+          displayName,
+          email,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+        setUser(result.user);
+        return { success: true };
+      } catch (error: any) {
+        return { success: false, error: error.message };
+      }
+    },
+    logout: async () => {
+      try {
+        await signOut(auth);
+        setUser(null);
+        return { success: true };
+      } catch (error: any) {
+        return { success: false, error: error.message };
+      }
+    },
+    resetPassword: async (email: string) => {
+      await sendPasswordResetEmail(auth, email);
+    },
+    verifyEmail: async () => {
+      if (user) {
+        await sendEmailVerification(user);
+      }
+    },
+    signInWithGoogle: async () => {
+      try {
+        console.log("Attempting to sign in with Google");
+        await signInWithPopup(auth, googleProvider);
+        console.log("Google sign in successful");
+        // Cookie will be set by the onAuthStateChanged listener
+      } catch (error: any) {
+        console.error("Google sign in error details:", {
+          code: error.code,
+          message: error.message,
+          fullError: error
+        });
+        throw error;
+      }
+    },
+    updateProfile: async (data: { 
+      displayName: string; 
+      photoURL: string | null | undefined;
+    }) => {
+      if (!user) {
+        return { success: false, error: 'No user logged in' };
+      }
+
+      try {
+        // Get the current user from auth
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          throw new Error('No authenticated user found');
+        }
+
+        // Update Firebase Auth profile
+        await updateProfile(currentUser, {
+          displayName: data.displayName,
+        });
+
+        // Update Firestore document
+        await updateDoc(doc(db, 'users', currentUser.uid), {
+          displayName: data.displayName,
+          photoURL: data.photoURL,
+          updatedAt: serverTimestamp(),
+        });
+
+        // Update local state
+        setUser(prev => prev ? {
+          ...prev,
+          displayName: data.displayName,
+          photoURL: data.photoURL || null,
+        } : null);
+
+        return { success: true };
+      } catch (error: any) {
+        console.error('Error updating profile:', error);
+        return { 
+          success: false, 
+          error: error.message || 'Failed to update profile' 
+        };
+      }
+    },
+    deleteProfileImage: async () => {
+      if (!user) return { success: false, error: 'No user logged in' };
+      
+      try {
+        // Get the current user from auth
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          throw new Error('No authenticated user found');
+        }
+
+        // Update Firestore user document to remove photoURL
+        await updateDoc(doc(db, 'users', currentUser.uid), {
+          photoURL: null,
+          updatedAt: new Date().toISOString(),
+        });
+
+        // Update local user state
+        setUser({
+          ...currentUser,
+          photoURL: null,
+        });
+
+        return { success: true };
+      } catch (error: any) {
+        console.error("Error deleting profile image:", error);
+        return { success: false, error: error.message };
+      }
+    },
   };
 
   return (
     <AuthContext.Provider value={value}>
-      {initialized && children}
+      {!loading && children}
     </AuthContext.Provider>
   );
 } 

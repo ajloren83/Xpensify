@@ -43,6 +43,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExpenseCategory, ExpenseStatus, ExpenseType } from "@/types/expense";
 import { cn } from "@/lib/utils";
 import { ExpenseService } from "@/lib/services/expense-service";
+import { useSettings } from "@/lib/settings-context";
 
 const expenseService = new ExpenseService();
 
@@ -52,6 +53,7 @@ export default function ExpensesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { settings } = useSettings();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedExpenses, setSelectedExpenses] = useState<string[]>([]);
@@ -476,9 +478,9 @@ export default function ExpensesPage() {
                         />
                       </TableCell>
                       <TableCell>{expense.name}</TableCell>
-                      <TableCell>{formatCurrency(expense.toPay)}</TableCell>
-                      <TableCell>{formatCurrency(expense.willPay)}</TableCell>
-                      <TableCell>{formatCurrency(expense.remaining)}</TableCell>
+                      <TableCell>{formatCurrency(expense.toPay, settings.display.currency)}</TableCell>
+                      <TableCell>{formatCurrency(expense.willPay, settings.display.currency)}</TableCell>
+                      <TableCell>{formatCurrency(expense.remaining, settings.display.currency)}</TableCell>
                       <TableCell>
                         <span
                           className={cn(
@@ -516,10 +518,10 @@ export default function ExpensesPage() {
                         {expense.status === "paid" 
                           ? formatCurrency(expense.type === "income" 
                               ? expense.amount + expense.willPay 
-                              : expense.amount - expense.willPay)
+                              : expense.amount - expense.willPay, settings.display.currency)
                           : formatCurrency(expense.type === "income" 
                               ? expense.amount 
-                              : -expense.amount)}
+                              : -expense.amount, settings.display.currency)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">

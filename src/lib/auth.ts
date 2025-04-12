@@ -12,6 +12,7 @@ import {
   } from 'firebase/auth';
   import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
   import { auth, db } from './firebase';
+  import { useSettings } from './settings-context';
   
   // Create a new user with email and password
   export const registerWithEmail = async (
@@ -29,6 +30,9 @@ import {
       // Send email verification
       await sendEmailVerification(user);
       
+      // Get default settings from context
+      const { settings } = useSettings();
+      
       // Create user document in Firestore
       await setDoc(doc(db, 'users', user.uid), {
         uid: user.uid,
@@ -36,18 +40,20 @@ import {
         fullName: fullName,
         createdAt: new Date().toISOString(),
         profileImageUrl: '',
-        currency: 'USD',
-        darkMode: true,
-        language: 'en',
+        display: {
+          currency: settings.display.currency,
+          darkMode: settings.display.darkMode,
+          language: settings.display.language,
+        },
         salary: {
           amount: 0,
-          creditDate: 'month-end', // Options: '15th', 'month-end', 'custom'
+          creditDate: 'month-end',
           customDate: null,
         },
         notifications: {
-          salary: true,
-          expenses: true,
-          recurring: true,
+          salary: settings.notifications.salary,
+          expenses: settings.notifications.expenses,
+          recurring: settings.notifications.recurring,
         }
       });
       
@@ -78,24 +84,29 @@ import {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       
       if (!userDoc.exists()) {
+        // Get default settings from context
+        const { settings } = useSettings();
+        
         await setDoc(doc(db, 'users', user.uid), {
           uid: user.uid,
           email: user.email,
           fullName: user.displayName,
           createdAt: new Date().toISOString(),
           profileImageUrl: user.photoURL || '',
-          currency: 'USD',
-          darkMode: true,
-          language: 'en',
+          display: {
+            currency: settings.display.currency,
+            darkMode: settings.display.darkMode,
+            language: settings.display.language,
+          },
           salary: {
             amount: 0,
             creditDate: 'month-end',
             customDate: null,
           },
           notifications: {
-            salary: true,
-            expenses: true,
-            recurring: true,
+            salary: settings.notifications.salary,
+            expenses: settings.notifications.expenses,
+            recurring: settings.notifications.recurring,
           }
         });
       }

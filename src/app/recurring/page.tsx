@@ -15,6 +15,7 @@ import { RecurringExpenseDialog } from "@/components/recurring/recurring-expense
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useSettings } from "@/lib/settings-context";
 
 // Create a simple toggle group component since the UI component is missing
 const ToggleGroup = ({ type, value, onValueChange, children }: { 
@@ -57,6 +58,7 @@ interface ExtendedRecurringExpense extends RecurringExpense {
 
 export default function RecurringPage() {
   const { user } = useAuth();
+  const { settings } = useSettings();
   const [recurringExpenses, setRecurringExpenses] = useState<ExtendedRecurringExpense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedExpenses, setSelectedExpenses] = useState<string[]>([]);
@@ -327,7 +329,7 @@ export default function RecurringPage() {
                       />
                     </TableCell>
                     <TableCell className="font-medium">{expense.name}</TableCell>
-                    <TableCell>{formatCurrency(expense.amount)}</TableCell>
+                    <TableCell>{formatCurrency(expense.amount, settings.display.currency)}</TableCell>
                     <TableCell>{formatDate(expense.dueDate)}</TableCell>
                     <TableCell>{expense.endDate ? formatDate(expense.endDate) : "Infinite"}</TableCell>
                     <TableCell>
@@ -370,7 +372,7 @@ export default function RecurringPage() {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Amount:</span>
-                    <span className="font-medium">{formatCurrency(expense.amount)}</span>
+                    <span className="font-medium">{formatCurrency(expense.amount, settings.display.currency)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Due Date:</span>

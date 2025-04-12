@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowDownIcon, ArrowUpIcon, PiggyBankIcon, WalletIcon } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { useSettings } from "@/lib/settings-context";
 
 interface QuickSnapshotProps {
   balance: number;
@@ -17,22 +18,18 @@ export function QuickSnapshot({
   savings,
   isLoading = false,
 }: QuickSnapshotProps) {
+  const { settings } = useSettings();
+
   if (isLoading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {[1, 2, 3, 4].map((i) => (
+        {[...Array(4)].map((_, i) => (
           <Card key={i} className="overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                <div className="h-4 w-24 animate-pulse rounded bg-muted"></div>
-              </CardTitle>
-              <div className="h-8 w-8 animate-pulse rounded-full bg-muted"></div>
+              <CardTitle className="text-sm font-medium">Loading...</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-7 w-24 animate-pulse rounded bg-muted"></div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                <div className="h-3 w-16 animate-pulse rounded bg-muted"></div>
-              </p>
+              <div className="h-8 w-24 bg-muted animate-pulse rounded" />
             </CardContent>
           </Card>
         ))}
@@ -48,9 +45,9 @@ export function QuickSnapshot({
           <WalletIcon className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{formatCurrency(balance)}</div>
+          <div className="text-2xl font-bold">{formatCurrency(balance, settings.display.currency)}</div>
           <p className="text-xs text-muted-foreground">
-            {balance >= 0 ? "+" : ""}{formatCurrency(balance - (income - expenses))} from last month
+            {balance >= 0 ? "+" : ""}{formatCurrency(balance - (income - expenses), settings.display.currency)} from last month
           </p>
         </CardContent>
       </Card>
@@ -60,9 +57,9 @@ export function QuickSnapshot({
           <ArrowUpIcon className="h-4 w-4 text-green-500" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{formatCurrency(income)}</div>
+          <div className="text-2xl font-bold">{formatCurrency(income, settings.display.currency)}</div>
           <p className="text-xs text-muted-foreground">
-            +{formatCurrency(income)} this month
+            +{formatCurrency(income, settings.display.currency)} this month
           </p>
         </CardContent>
       </Card>
@@ -72,9 +69,9 @@ export function QuickSnapshot({
           <ArrowDownIcon className="h-4 w-4 text-red-500" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{formatCurrency(expenses)}</div>
+          <div className="text-2xl font-bold">{formatCurrency(expenses, settings.display.currency)}</div>
           <p className="text-xs text-muted-foreground">
-            -{formatCurrency(expenses)} this month
+            -{formatCurrency(expenses, settings.display.currency)} this month
           </p>
         </CardContent>
       </Card>
@@ -84,9 +81,9 @@ export function QuickSnapshot({
           <PiggyBankIcon className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{formatCurrency(savings)}</div>
+          <div className="text-2xl font-bold">{formatCurrency(savings, settings.display.currency)}</div>
           <p className="text-xs text-muted-foreground">
-            {savings >= 0 ? "+" : ""}{formatCurrency(savings)} total savings
+            {savings >= 0 ? "+" : ""}{formatCurrency(savings, settings.display.currency)} total savings
           </p>
         </CardContent>
       </Card>

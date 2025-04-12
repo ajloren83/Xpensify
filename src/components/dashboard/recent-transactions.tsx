@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
 import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
+import { useSettings } from "@/lib/settings-context";
 
 interface Transaction {
   id: string;
@@ -20,29 +21,29 @@ export function RecentTransactions({
   transactions,
   isLoading = false,
 }: RecentTransactionsProps) {
+  const { settings } = useSettings();
+
   if (isLoading) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-medium">
-            <div className="h-6 w-48 animate-pulse rounded bg-muted"></div>
-          </CardTitle>
+          <CardTitle>Loading...</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between space-x-4"
-              >
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="flex items-center justify-between space-x-4">
                 <div className="flex items-center space-x-4">
-                  <div className="h-10 w-10 animate-pulse rounded-full bg-muted"></div>
-                  <div className="space-y-1">
-                    <div className="h-4 w-24 animate-pulse rounded bg-muted"></div>
-                    <div className="h-3 w-32 animate-pulse rounded bg-muted"></div>
+                  <div className="h-10 w-10 rounded-full bg-muted animate-pulse" />
+                  <div className="space-y-2">
+                    <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+                    <div className="h-3 w-16 bg-muted animate-pulse rounded" />
                   </div>
                 </div>
-                <div className="h-6 w-20 animate-pulse rounded bg-muted"></div>
+                <div className="text-right">
+                  <div className="h-4 w-20 bg-muted animate-pulse rounded" />
+                  <div className="h-3 w-16 bg-muted animate-pulse rounded mt-1" />
+                </div>
               </div>
             ))}
           </div>
@@ -93,7 +94,7 @@ export function RecentTransactions({
                   }`}
                 >
                   {transaction.type === "expense" ? "-" : "+"}
-                  {formatCurrency(transaction.amount)}
+                  {formatCurrency(transaction.amount, settings.display.currency)}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {new Date(transaction.date).toLocaleDateString()}

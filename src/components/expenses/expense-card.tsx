@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Expense } from "@/lib/db";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Edit, Trash2 } from "lucide-react";
+import { useSettings } from "@/lib/settings-context";
 
 interface ExpenseCardProps {
   expense: Expense;
@@ -16,6 +17,8 @@ interface ExpenseCardProps {
 }
 
 export function ExpenseCard({ expense, onEdit, onDelete, isSelected, onSelect }: ExpenseCardProps) {
+  const { settings } = useSettings();
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "paid":
@@ -60,15 +63,15 @@ export function ExpenseCard({ expense, onEdit, onDelete, isSelected, onSelect }:
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-xs text-muted-foreground">To Pay</p>
-            <p className="text-lg font-semibold">{formatCurrency(expense.toPay)}</p>
+            <p className="text-lg font-semibold">{formatCurrency(expense.toPay, settings.display.currency)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Will Pay</p>
-            <p className="text-lg font-semibold">{formatCurrency(expense.willPay)}</p>
+            <p className="text-lg font-semibold">{formatCurrency(expense.willPay, settings.display.currency)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Remaining</p>
-            <p className="text-lg font-semibold">{formatCurrency(expense.remaining)}</p>
+            <p className="text-lg font-semibold">{formatCurrency(expense.remaining, settings.display.currency)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Due Date</p>

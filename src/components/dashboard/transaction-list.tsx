@@ -2,50 +2,44 @@
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { ExpenseTransaction, TransactionType } from '@/lib/types';
 import { ArrowUpRight, ArrowDownRight, Tag } from 'lucide-react';
+import { useSettings } from '@/lib/settings-context';
 
 interface TransactionListProps {
   transactions: ExpenseTransaction[];
 }
 
 export default function TransactionList({ transactions }: TransactionListProps) {
+  const { settings } = useSettings();
+
   if (!transactions || transactions.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[200px]">
-        <p className="text-muted-foreground">No transactions to display</p>
+      <div className="text-center text-muted-foreground py-4">
+        No transactions found
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {transactions.map((transaction) => (
         <div key={transaction.id} className="flex items-center justify-between p-3 rounded-lg bg-card border">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+          <div className="flex items-center space-x-3">
+            <div className={`p-2 rounded-full ${
               transaction.type === TransactionType.INCOME 
-                ? 'bg-green-500/10' 
-                : 'bg-red-500/10'
+                ? 'bg-green-100 text-green-600' 
+                : 'bg-red-100 text-red-600'
             }`}>
               {transaction.type === TransactionType.INCOME ? (
-                <ArrowUpRight className="h-5 w-5 text-green-500" />
+                <ArrowUpRight className="h-4 w-4" />
               ) : (
-                <ArrowDownRight className="h-5 w-5 text-red-500" />
+                <ArrowDownRight className="h-4 w-4" />
               )}
             </div>
             <div>
-              <p className="font-semibold">{transaction.name}</p>
-              <div className="flex items-center text-xs text-muted-foreground gap-2">
-                <span>{formatDate(transaction.date)}</span>
-                {transaction.category && (
-                  <>
-                    <span>•</span>
-                    <div className="flex items-center gap-1">
-                      <Tag className="h-3 w-3" />
-                      <span>{transaction.category}</span>
-                    </div>
-                  </>
-                )}
-              </div>
+              <p className="font-medium">{transaction.name}</p>
+              <p className="text-sm text-muted-foreground">
+                {transaction.category}
+              </p>
             </div>
           </div>
           <p className={`font-semibold ${
@@ -54,7 +48,7 @@ export default function TransactionList({ transactions }: TransactionListProps) 
               : 'text-red-500'
           }`}>
             {transaction.type === TransactionType.INCOME ? '+' : '-'} 
-            {formatCurrency(transaction.amount)}
+            {formatCurrency(transaction.amount, settings.display.currency)}
           </p>
         </div>
       ))}
