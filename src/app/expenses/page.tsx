@@ -44,6 +44,7 @@ import { ExpenseCategory, ExpenseStatus, ExpenseType } from "@/types/expense";
 import { cn } from "@/lib/utils";
 import { ExpenseService } from "@/lib/services/expense-service";
 import { useSettings } from "@/lib/settings-context";
+import { FinancialSummary } from "@/components/expenses/financial-summary";
 
 const expenseService = new ExpenseService();
 
@@ -443,7 +444,12 @@ export default function ExpensesPage() {
         />
       </div>
 
-      {/* Row 4: Table or Card View */}
+      {/* Row 4: Financial Summary */}
+      <div className="w-full">
+        <FinancialSummary />
+      </div>
+
+      {/* Row 5: Table or Card View */}
       {viewMode === "table" ? (
         <Card>
           <CardContent className="p-0">

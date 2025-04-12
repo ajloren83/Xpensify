@@ -822,6 +822,12 @@ import {
       expenses?: boolean;
       recurring?: boolean;
     };
+    salarySettings?: {
+      amount?: number;
+      creditDateType?: 'first' | 'middle' | 'last' | 'custom';
+      customDate?: number;
+      currency?: string;
+    };
   }) => {
     try {
       console.log('Updating settings for user:', userId, 'with data:', settingsData);
@@ -840,6 +846,10 @@ import {
         notifications: {
           ...currentSettings.notifications,
           ...settingsData.notifications,
+        },
+        salarySettings: {
+          ...currentSettings.salarySettings,
+          ...settingsData.salarySettings,
         },
       };
       
@@ -862,7 +872,8 @@ import {
   // Salary Settings
   export async function updateUserSalarySettings(userId: string, settings: {
     amount: number;
-    creditDate: number;
+    creditDateType: 'first' | 'middle' | 'last' | 'custom';
+    customDate?: number;
     currency: string;
   }): Promise<void> {
     try {
@@ -879,7 +890,8 @@ import {
 
   export async function getUserSalarySettings(userId: string): Promise<{
     amount: number;
-    creditDate: number;
+    creditDateType: 'first' | 'middle' | 'last' | 'custom';
+    customDate?: number;
     currency: string;
   } | null> {
     try {

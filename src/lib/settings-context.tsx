@@ -15,6 +15,17 @@ export interface Settings {
     expenses: boolean;
     recurring: boolean;
   };
+  salarySettings: {
+    amount: number;
+    creditDateType: 'first' | 'middle' | 'last' | 'custom';
+    customDate?: number;
+    currency: string;
+    lastUpdated?: {
+      date: string;
+      month: number;
+      year: number;
+    };
+  };
 }
 
 export interface SettingsContextType {
@@ -33,6 +44,17 @@ const defaultSettings: Settings = {
     salary: true, // Default notification settings
     expenses: true,
     recurring: true,
+  },
+  salarySettings: {
+    amount: 0,
+    creditDateType: 'middle',
+    customDate: 15,
+    currency: 'INR',
+    lastUpdated: {
+      date: new Date().toISOString(),
+      month: new Date().getMonth(),
+      year: new Date().getFullYear(),
+    },
   },
 };
 
@@ -90,6 +112,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
               salary: userSettings.notifications?.salary ?? defaultSettings.notifications.salary,
               expenses: userSettings.notifications?.expenses ?? defaultSettings.notifications.expenses,
               recurring: userSettings.notifications?.recurring ?? defaultSettings.notifications.recurring,
+            },
+            salarySettings: {
+              amount: userSettings.salarySettings?.amount ?? defaultSettings.salarySettings.amount,
+              creditDateType: userSettings.salarySettings?.creditDateType ?? defaultSettings.salarySettings.creditDateType,
+              customDate: userSettings.salarySettings?.customDate ?? defaultSettings.salarySettings.customDate,
+              currency: userSettings.salarySettings?.currency ?? defaultSettings.salarySettings.currency,
+              lastUpdated: userSettings.salarySettings?.lastUpdated ?? defaultSettings.salarySettings.lastUpdated,
             },
           };
           console.log('Setting new settings:', newSettings);

@@ -45,10 +45,11 @@ import {
           darkMode: settings.display.darkMode,
           language: settings.display.language,
         },
-        salary: {
+        salarySettings: {
           amount: 0,
-          creditDate: 'month-end',
-          customDate: null,
+          creditDateType: 'middle',
+          customDate: 15,
+          currency: settings.display.currency,
         },
         notifications: {
           salary: settings.notifications.salary,
@@ -98,10 +99,11 @@ import {
             darkMode: settings.display.darkMode,
             language: settings.display.language,
           },
-          salary: {
+          salarySettings: {
             amount: 0,
-            creditDate: 'month-end',
-            customDate: null,
+            creditDateType: 'middle',
+            customDate: 15,
+            currency: settings.display.currency,
           },
           notifications: {
             salary: settings.notifications.salary,

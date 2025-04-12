@@ -18,6 +18,7 @@ import { useRouter } from "next/navigation";
 import { User } from "firebase/auth";
 import { toast } from 'sonner';
 import { useTheme } from "next-themes";
+import { Slider } from "@/components/ui/slider";
 
 export default function SettingsPage() {
   const { user, logout, updateProfile, deleteProfileImage } = useAuth();
@@ -41,7 +42,8 @@ export default function SettingsPage() {
   
   // Salary settings
   const [salaryAmount, setSalaryAmount] = useState(0);
-  const [salaryDate, setSalaryDate] = useState("15");
+  const [salaryDateType, setSalaryDateType] = useState<'first' | 'middle' | 'last' | 'custom'>('middle');
+  const [customDate, setCustomDate] = useState(15);
   
   // Notification settings
   const [notifySalary, setNotifySalary] = useState(true);
@@ -67,6 +69,9 @@ export default function SettingsPage() {
       const userSettings = await getUserSettings(user.uid);
       if (userSettings) {
         setDarkMode(userSettings.display?.darkMode ?? true);
+        setSalaryAmount(userSettings.salarySettings?.amount ?? 0);
+        setSalaryDateType(userSettings.salarySettings?.creditDateType ?? 'middle');
+        setCustomDate(userSettings.salarySettings?.customDate ?? 15);
       }
     } catch (error) {
       console.error("Error loading user settings:", error);
@@ -218,6 +223,49 @@ export default function SettingsPage() {
     setError(null);
     
     try {
+      // Get current date
+      const currentDate = new Date();
+      const currentMonth = currentDate.getMonth();
+      const currentYear = currentDate.getFullYear();
+      const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+      const isLastDayOfMonth = currentDate.getDate() === lastDayOfMonth;
+
+      // Prepare salary settings with proper typing
+      const salarySettings: {
+        amount: number;
+        creditDateType: 'first' | 'middle' | 'last' | 'custom';
+        currency: string;
+        customDate?: number;
+        lastUpdated?: {
+          date: string;
+          month: number;
+          year: number;
+        };
+      } = {
+        amount: salaryAmount,
+        creditDateType: salaryDateType,
+        currency: settings.display.currency,
+      };
+
+      // Only include customDate if the type is 'custom'
+      if (salaryDateType === 'custom') {
+        salarySettings.customDate = customDate;
+      }
+
+      // Add last updated information
+      salarySettings.lastUpdated = {
+        date: currentDate.toISOString(),
+        month: currentMonth,
+        year: currentYear,
+      };
+
+      // If it's the last day of the month and salary is set to last day,
+      // we need to handle it specially
+      if (isLastDayOfMonth && (salaryDateType === 'last' || (salaryDateType === 'custom' && customDate === lastDayOfMonth))) {
+        // The salary should be applied to the current month
+        salarySettings.lastUpdated.month = currentMonth;
+      }
+
       await updateUserSettings(user.uid, {
         display: {
           darkMode: darkMode,
@@ -227,6 +275,7 @@ export default function SettingsPage() {
           expenses: notifyExpenses,
           recurring: notifyRecurring,
         },
+        salarySettings,
       });
       
       setSettings({
@@ -234,6 +283,10 @@ export default function SettingsPage() {
         display: {
           ...settings.display,
           darkMode: darkMode,
+        },
+        salarySettings: {
+          ...settings.salarySettings,
+          ...salarySettings,
         },
       });
       
@@ -426,27 +479,52 @@ export default function SettingsPage() {
                 <Input
                   id="salaryAmount"
                   type="number"
+                  min="0"
+                  step="0.01"
                   value={salaryAmount}
-                  onChange={(e) => setSalaryAmount(parseFloat(e.target.value))}
+                  onChange={(e) => setSalaryAmount(parseFloat(e.target.value) || 0)}
+                  required
                 />
               </div>
               
               <div className="grid gap-2">
-                <Label htmlFor="salaryDate">Salary Credit Date</Label>
-                <Select value={salaryDate} onValueChange={setSalaryDate}>
-                  <SelectTrigger id="salaryDate">
-                    <SelectValue placeholder="Select date" />
+                <Label htmlFor="salaryDateType">Salary Credit Date</Label>
+                <Select 
+                  value={salaryDateType} 
+                  onValueChange={(value: 'first' | 'middle' | 'last' | 'custom') => setSalaryDateType(value)}
+                >
+                  <SelectTrigger id="salaryDateType">
+                    <SelectValue placeholder="Select credit date type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
-                      <SelectItem key={day} value={day.toString()}>
-                        {day}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="first">First Date of the Month</SelectItem>
+                    <SelectItem value="middle">Middle Date of the Month (15th)</SelectItem>
+                    <SelectItem value="last">Last Date of the Month</SelectItem>
+                    <SelectItem value="custom">Custom Date</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
+
+            {salaryDateType === 'custom' && (
+              <div className="space-y-2">
+                <Label htmlFor="customDate">Custom Date (1-31)</Label>
+                <div className="flex items-center gap-4">
+                  <Slider
+                    id="customDate"
+                    min={1}
+                    max={31}
+                    step={1}
+                    value={[customDate]}
+                    onValueChange={([value]) => setCustomDate(value)}
+                    className="flex-1"
+                  />
+                  <span className="text-sm text-muted-foreground w-8 text-center">
+                    {customDate}
+                  </span>
+                </div>
+              </div>
+            )}
             
             <div className="flex justify-end">
               <Button onClick={handleSaveSettings} disabled={isLoading}>

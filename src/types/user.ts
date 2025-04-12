@@ -6,8 +6,9 @@ export interface UserPreferences {
 
 export interface SalarySettings {
   amount: number;
-  creditDate: '15th' | 'month-end' | 'custom';
+  creditDateType: 'first' | 'middle' | 'last' | 'custom';
   customDate?: number;
+  currency: string;
 }
 
 export interface UserProfile {
@@ -18,7 +19,7 @@ export interface UserProfile {
   createdAt: string;
   updatedAt: string;
   preferences: UserPreferences;
-  salary: SalarySettings;
+  salarySettings: SalarySettings;
   notifications: {
     salary: boolean;
     expenses: boolean;
