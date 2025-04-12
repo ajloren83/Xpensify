@@ -9,7 +9,8 @@ import {
   deleteExpense, 
   batchDeleteExpenses,
   getAutoTags,
-  Expense
+  Expense,
+  generateExpensesFromRecurring
 } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,6 +70,7 @@ export default function ExpensesPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
   const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const { data: expensesData = [], isLoading: expensesLoading } = useQuery({
     queryKey: ["expenses", user?.uid],
@@ -85,87 +87,33 @@ export default function ExpensesPage() {
   const loadExpenses = async () => {
     if (!user) return;
     
+    setIsLoading(true);
+    setError(null);
+    
     try {
-      setIsLoading(true);
-      
-      // Calculate the correct date range for the selected month
-      const startDate = new Date(currentYear, currentMonth, 1);
-      startDate.setHours(0, 0, 0, 0);
-      
-      const endDate = new Date(currentYear, currentMonth + 1, 0);
-      endDate.setHours(23, 59, 59, 999);
-      
-      console.log("Loading expenses for date range:", {
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
-        month: currentMonth,
-        year: currentYear
-      });
-      
-      // Get expenses without date filtering first to ensure we get data
+      // Load all expenses for the current month
       const result = await getExpenses(user.uid);
       
-      if (result.success && result.expenses) {
-        console.log("Fetched expenses:", result.expenses.length);
-        
-        // Filter expenses by dueDate to ensure they belong to the selected month
-        // Use a more robust date parsing approach
-        const filteredExpenses = result.expenses.filter(expense => {
-          if (!expense.dueDate) return false;
-          
-          try {
-            // Ensure we have a valid date string
-            const dueDateStr = expense.dueDate as string;
-            const expenseDate = new Date(dueDateStr);
-            
-            // Check if the date is valid
-            if (isNaN(expenseDate.getTime())) {
-              console.error("Invalid date:", dueDateStr);
-              return false;
-            }
-            
-            return expenseDate.getMonth() === currentMonth && 
-                   expenseDate.getFullYear() === currentYear;
-          } catch (error) {
-            console.error("Error parsing date:", expense.dueDate, error);
-            return false;
-          }
-        });
-        
-        console.log("Filtered expenses for current month:", filteredExpenses.length);
-        setExpenses(filteredExpenses);
-        
-        // If no expenses found for the current month, show a message
-        if (filteredExpenses.length === 0) {
-          toast({
-            title: "No expenses found",
-            description: `No expenses found for ${new Date(currentYear, currentMonth).toLocaleString('default', { month: 'long' })} ${currentYear}`,
-            variant: "default",
-            toastType: "info",
-            duration: 5000, // Auto-dismiss after 5 seconds
-          });
-        }
-      } else {
-        console.error("Error loading expenses:", result.error);
-        setExpenses([]);
-        toast({
-          title: "Error loading expenses",
-          description: result.error || "An unknown error occurred",
-          variant: "destructive",
-          toastType: "error",
-          duration: 8000, // Auto-dismiss after 8 seconds for errors
-        });
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to fetch expenses');
       }
-    } catch (error) {
-      console.error("Error loading expenses:", error);
-      setExpenses([]);
-      toast({
-        title: "Error loading expenses",
-        description: "An unexpected error occurred while loading expenses",
-        variant: "destructive",
-        toastType: "error",
-        duration: 8000, // Auto-dismiss after 8 seconds for errors
+      
+      // Filter expenses by current month and year
+      const filteredExpenses = (result.expenses || []).filter(expense => {
+        const expenseDate = new Date(expense.dueDate);
+        return expenseDate.getMonth() === currentMonth && 
+               expenseDate.getFullYear() === currentYear;
       });
+      
+      // Sort expenses by due date
+      const sortedExpenses = filteredExpenses.sort((a, b) => {
+        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      });
+      
+      setExpenses(sortedExpenses);
+    } catch (err: any) {
+      console.error('Error loading expenses:', err);
+      setError(err.message || 'An error occurred while loading expenses');
     } finally {
       setIsLoading(false);
     }
@@ -250,23 +198,24 @@ export default function ExpensesPage() {
     if (!user || selectedExpenses.length === 0) return;
     
     try {
-      // Delete all selected expenses
-      for (const expenseId of selectedExpenses) {
-        const expense = expenses.find(e => e.id === expenseId);
-        if (expense) {
-          await handleDeleteExpense(expense);
-        }
+      const result = await batchDeleteExpenses(user.uid, selectedExpenses);
+      
+      if (result.success) {
+        // Clear selection
+        setSelectedExpenses([]);
+        
+        toast({
+          title: "Success",
+          description: "Selected transactions deleted successfully",
+          toastType: "success",
+          duration: 5000,
+        });
+        
+        // Reload expenses to update the UI
+        loadExpenses();
+      } else {
+        throw new Error(result.error || "Failed to delete selected transactions");
       }
-      
-      // Clear selection
-      setSelectedExpenses([]);
-      
-      toast({
-        title: "Success",
-        description: "Selected transactions deleted successfully",
-        toastType: "success",
-        duration: 5000, // Auto-dismiss after 5 seconds
-      });
     } catch (error) {
       console.error("Error deleting selected expenses:", error);
       toast({
@@ -274,7 +223,7 @@ export default function ExpensesPage() {
         description: "Failed to delete selected transactions",
         variant: "destructive",
         toastType: "error",
-        duration: 8000, // Auto-dismiss after 8 seconds for errors
+        duration: 8000,
       });
     }
   };
@@ -333,41 +282,43 @@ export default function ExpensesPage() {
         
         console.log("Add result:", result);
         
-        if (result.success) {
-          // If there's a remaining amount, create a carry forward expense
-          if (newExpense.remaining > 0) {
-            // Calculate next month's date
-            let nextMonth = currentMonth + 1;
-            let nextYear = currentYear;
-            if (nextMonth > 11) {
-              nextMonth = 0;
-              nextYear++;
-            }
-            
-            const carryForwardExpense = {
-              ...newExpense,
-              name: newExpense.name,
-              amount: newExpense.remaining,
-              toPay: newExpense.remaining,
-              willPay: 0,
-              remaining: newExpense.remaining,
-              dueDate: new Date(nextYear, nextMonth, dueDate.getDate()).toISOString(),
-              status: "pending",
-              createdAt: new Date().toISOString()
-            };
-            
-            console.log("Creating carry forward expense:", carryForwardExpense);
-            await addExpense(carryForwardExpense);
+        if (!result.success) {
+          throw new Error(result.error || "Failed to add expense");
+        }
+        
+        // If there's a remaining amount, create a carry forward expense
+        if (newExpense.remaining > 0) {
+          // Calculate next month's date
+          let nextMonth = currentMonth + 1;
+          let nextYear = currentYear;
+          if (nextMonth > 11) {
+            nextMonth = 0;
+            nextYear++;
           }
           
-          toast({
-            title: "Success",
-            description: "Expense added successfully",
-            toastType: "success",
-            duration: 5000, // Auto-dismiss after 5 seconds
-          });
-          loadExpenses();
+          const carryForwardExpense = {
+            ...newExpense,
+            name: newExpense.name,
+            amount: newExpense.remaining,
+            toPay: newExpense.remaining,
+            willPay: 0,
+            remaining: newExpense.remaining,
+            dueDate: new Date(nextYear, nextMonth, dueDate.getDate()).toISOString(),
+            status: "pending",
+            createdAt: new Date().toISOString()
+          };
+          
+          console.log("Creating carry forward expense:", carryForwardExpense);
+          await addExpense(carryForwardExpense);
         }
+        
+        toast({
+          title: "Success",
+          description: "Expense added successfully",
+          toastType: "success",
+          duration: 5000, // Auto-dismiss after 5 seconds
+        });
+        loadExpenses();
       }
       
       setShowDialog(false);

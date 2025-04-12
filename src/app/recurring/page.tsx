@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { getRecurringExpenses, deleteRecurringExpense, updateRecurringExpense } from "@/lib/db";
+import { getRecurringExpenses, deleteRecurringExpense, updateRecurringExpense, addRecurringExpense } from "@/lib/db";
 import { RecurringExpense } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,7 @@ import { PlusIcon, TrashIcon, EditIcon, FilterIcon, SearchIcon, LayoutGridIcon, 
 import { RecurringExpenseDialog } from "@/components/recurring/recurring-expense-dialog";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 // Create a simple toggle group component since the UI component is missing
 const ToggleGroup = ({ type, value, onValueChange, children }: { 
@@ -65,6 +66,8 @@ export default function RecurringPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState<ExtendedRecurringExpense | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -139,13 +142,56 @@ export default function RecurringPage() {
       if (editingExpense) {
         await updateRecurringExpense(expense.id || "", expense);
       } else {
-        // Add new expense logic would go here
+        // Add new expense
+        const newExpense = {
+          ...expense,
+          userId: user.uid,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          status: expense.status || 'active'
+        };
+        
+        const result = await addRecurringExpense(newExpense);
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to add recurring expense');
+        }
       }
+      
       await loadRecurringExpenses();
       handleDialogClose();
     } catch (error) {
       console.error("Error saving recurring expense:", error);
+      // Keep dialog open on error
+      if (!editingExpense) {
+        setIsDialogOpen(true);
+      }
     }
+  };
+
+  const handleDeleteClick = (expense: ExtendedRecurringExpense) => {
+    setExpenseToDelete(expense);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!expenseToDelete?.id) return;
+    
+    try {
+      const result = await deleteRecurringExpense(expenseToDelete.id);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete recurring expense');
+      }
+      await loadRecurringExpenses();
+      setIsDeleteDialogOpen(false);
+      setExpenseToDelete(null);
+    } catch (error) {
+      console.error("Error deleting recurring expense:", error);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setIsDeleteDialogOpen(false);
+    setExpenseToDelete(null);
   };
 
   const filteredExpenses = recurringExpenses.filter(expense => 
@@ -285,9 +331,14 @@ export default function RecurringPage() {
                     <TableCell>{formatDate(expense.dueDate)}</TableCell>
                     <TableCell>{expense.endDate ? formatDate(expense.endDate) : "Infinite"}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => handleEditExpense(expense)}>
-                        <EditIcon className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => handleEditExpense(expense)}>
+                          <EditIcon className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(expense)}>
+                          <TrashIcon className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -343,6 +394,26 @@ export default function RecurringPage() {
         onSave={handleSaveExpense}
         onClose={handleDialogClose}
       />
+
+      {/* Add Delete Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Recurring Expense</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this recurring expense? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={handleDeleteCancel}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

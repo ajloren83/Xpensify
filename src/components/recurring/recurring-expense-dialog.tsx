@@ -89,7 +89,7 @@ export function RecurringExpenseDialog({
       amount: formData.amount || 0,
       startDate: new Date(formData.startDate || new Date()).toISOString(),
       dueDate: new Date(formData.dueDate || new Date()).toISOString(),
-      endDate: formData.isInfinite ? undefined : (formData.endDate ? new Date(formData.endDate).toISOString() : undefined),
+      endDate: formData.isInfinite ? null : (formData.endDate ? new Date(formData.endDate).toISOString() : null),
       category: formData.category || "Bills",
       notes: formData.notes || "",
       status: formData.status || "active",

@@ -16,29 +16,30 @@ import {
     serverTimestamp,
     Query,
     DocumentData,
+    runTransaction,
   } from 'firebase/firestore';
   import { ref, set, get, remove, update } from 'firebase/database';
   import { db, rtdb } from './firebase';
+  import { auth } from './firebase';
   
   // Types for our data models
-  export type Expense = {
+  export interface Expense {
     id?: string;
-    userId: string;
     name: string;
     amount: number;
-    toPay: number;
-    willPay: number;
-    remaining: number;
-    type: string; // 'expense' | 'income'
+    dueDate: string;
     category: string;
-    date: string;
-    dueDate?: string;
-    status: string; // 'paid' | 'pending' | 'overdue'
-    tag?: string;
-    notes?: string;
+    status: 'pending' | 'paid' | 'cancelled';
+    userId: string;
+    recurringId?: string;
     createdAt: string;
     updatedAt: string;
-  };
+    toPay: number;
+    willPay: number;
+    description?: string;
+    type: 'expense' | 'income';
+    monthKey?: string;
+  }
   
   export type RecurringExpense = {
     id?: string;
@@ -47,7 +48,7 @@ import {
     amount: number;
     dueDate: string; // Day of month (1-31)
     startDate: string;
-    endDate?: string; // null for infinite
+    endDate?: string | null; // null for infinite
     category: string;
     status: string; // 'active' | 'upcoming' | 'finished'
     notes?: string;
@@ -56,10 +57,28 @@ import {
   // Add a new expense
   export const addExpense = async (expense: Omit<Expense, 'id' | 'createdAt'>) => {
     try {
-      const docRef = await addDoc(collection(db, 'expenses'), {
+      // Validate required fields
+      if (!expense.userId || !expense.name || !expense.category) {
+        return { success: false, error: "Missing required fields" };
+      }
+
+      // Ensure numeric fields are valid numbers
+      const numericFields: (keyof Omit<Expense, 'id' | 'createdAt'>)[] = ['amount', 'toPay', 'willPay'];
+      for (const field of numericFields) {
+        const value = expense[field];
+        if (typeof value !== 'number' || isNaN(value)) {
+          return { success: false, error: `Invalid ${field} value` };
+        }
+      }
+
+      // Ensure type is set
+      const expenseData = {
         ...expense,
+        type: expense.type || 'expense',
         createdAt: new Date().toISOString(),
-      });
+      };
+
+      const docRef = await addDoc(collection(db, `users/${expense.userId}/expenses`), expenseData);
       return { success: true, id: docRef.id };
     } catch (error: any) {
       console.error("Error adding expense:", error);
@@ -70,118 +89,46 @@ import {
   // Get all expenses for a user with filtering options
   export const getExpenses = async (
     userId: string,
-    filters: {
-      category?: string;
-      type?: string;
-      status?: string;
-      startDate?: Date;
-      endDate?: Date;
-      minAmount?: number;
-      maxAmount?: number;
-    } = {},
-    lastDoc: any = null,
-    pageSize: number = 10
-  ) => {
+    month?: number,
+    year?: number
+  ): Promise<{ success: boolean; expenses?: Expense[]; error?: string }> => {
     try {
-      console.log("Getting expenses for user:", userId);
+      console.log("Getting expenses for user:", userId, "month:", month, "year:", year);
       
       // Use the correct collection path
-      let q = query(
-        collection(db, 'expenses'),
-        where('userId', '==', userId),
-        orderBy('dueDate', 'desc')
-      );
+      const expensesRef = collection(db, `users/${userId}/expenses`);
+      let q = query(expensesRef, orderBy('dueDate', 'asc'));
       
-      // Apply filters
-      if (filters.category) {
-        q = query(q, where('category', '==', filters.category));
-      }
-      if (filters.type) {
-        q = query(q, where('type', '==', filters.type));
-      }
-      if (filters.status) {
-        q = query(q, where('status', '==', filters.status));
-      }
-      
-      // Handle date filtering with proper error handling
-      if (filters.startDate && filters.endDate) {
-        try {
-          // Convert dates to Firestore Timestamps
-          const startTimestamp = Timestamp.fromDate(filters.startDate);
-          const endTimestamp = Timestamp.fromDate(filters.endDate);
-          
-          // Create a new query with date filters
-          q = query(
-            q,
-            where('dueDate', '>=', startTimestamp),
-            where('dueDate', '<=', endTimestamp)
-          );
-        } catch (dateError) {
-          console.error("Error filtering by date:", dateError);
-          // Continue without date filtering if there's an error
-        }
-      }
-      
-      if (filters.minAmount !== undefined && filters.maxAmount !== undefined) {
+      // If month and year are provided, filter by them
+      if (month !== undefined && year !== undefined) {
+        const startDate = new Date(year, month, 1);
+        const endDate = new Date(year, month + 1, 0);
+        
         q = query(
-          q,
-          where('amount', '>=', filters.minAmount),
-          where('amount', '<=', filters.maxAmount)
+          expensesRef,
+          where('dueDate', '>=', startDate.toISOString()),
+          where('dueDate', '<=', endDate.toISOString()),
+          orderBy('dueDate', 'asc')
         );
       }
       
-      console.log("Executing Firestore query");
       const querySnapshot = await getDocs(q);
-      console.log(`Found ${querySnapshot.docs.length} expense documents`);
+      const expenses: Expense[] = [];
       
-      const expenses = querySnapshot.docs.map(doc => {
+      querySnapshot.forEach((doc) => {
         const data = doc.data();
-        try {
-          return {
-            id: doc.id,
-            userId: data.userId,
-            name: data.name,
-            amount: data.amount || 0,
-            toPay: data.toPay || 0,
-            willPay: data.willPay || 0,
-            remaining: data.remaining || 0,
-            type: data.type || 'expense',
-            category: data.category || 'other',
-            date: data.date ? (typeof data.date.toDate === 'function' ? data.date.toDate().toISOString() : data.date) : new Date().toISOString(),
-            dueDate: data.dueDate ? (typeof data.dueDate.toDate === 'function' ? data.dueDate.toDate().toISOString() : data.dueDate) : new Date().toISOString(),
-            status: data.status || 'pending',
-            tag: data.tag || '',
-            notes: data.notes || '',
-            createdAt: data.createdAt ? (typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate().toISOString() : data.createdAt) : new Date().toISOString(),
-            updatedAt: data.updatedAt ? (typeof data.updatedAt.toDate === 'function' ? data.updatedAt.toDate().toISOString() : data.updatedAt) : new Date().toISOString(),
-          } as Expense;
-        } catch (docError) {
-          console.error("Error processing expense document:", docError, data);
-          // Return a minimal valid expense object if there's an error
-          return {
-            id: doc.id,
-            userId: data.userId || userId,
-            name: data.name || 'Unknown Expense',
-            amount: 0,
-            toPay: 0,
-            willPay: 0,
-            remaining: 0,
-            type: 'expense',
-            category: 'other',
-            date: new Date().toISOString(),
-            dueDate: new Date().toISOString(),
-            status: 'pending',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          } as Expense;
-        }
+        expenses.push({
+          id: doc.id,
+          ...data,
+          type: data.type || 'expense'
+        } as Expense);
       });
       
-      console.log("Processed expenses:", expenses.length);
+      console.log("Found expenses:", expenses.length);
       return { success: true, expenses };
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error getting expenses:", error);
-      return { success: false, error: error.message };
+      return { success: false, error: (error as Error).message };
     }
   };
   
@@ -228,7 +175,7 @@ import {
   // Delete an expense
   export const deleteExpense = async (userId: string, id: string) => {
     try {
-      await deleteDoc(doc(db, 'expenses', id));
+      await deleteDoc(doc(db, `users/${userId}/expenses`, id));
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -236,12 +183,12 @@ import {
   };
   
   // Batch delete expenses
-  export const batchDeleteExpenses = async (ids: string[]) => {
+  export const batchDeleteExpenses = async (userId: string, ids: string[]) => {
     try {
       // Firestore doesn't support batch operations in client SDK as easily
       // So we'll delete one by one
       for (const id of ids) {
-        await deleteDoc(doc(db, 'expenses', id));
+        await deleteDoc(doc(db, `users/${userId}/expenses`, id));
       }
       return { success: true };
     } catch (error: any) {
@@ -250,12 +197,112 @@ import {
   };
   
   // Add a recurring expense
-  export const addRecurringExpense = async (recurringExpense: Omit<RecurringExpense, 'id'>) => {
+  export const addRecurringExpense = async (expense: RecurringExpense): Promise<{ success: boolean; error?: string }> => {
     try {
-      const docRef = await addDoc(collection(db, 'recurringExpenses'), recurringExpense);
-      return { success: true, id: docRef.id };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+      const user = auth.currentUser;
+      if (!user) {
+        return { success: false, error: "User not authenticated" };
+      }
+
+      // Validate required fields
+      if (!expense.name || !expense.amount || !expense.dueDate || !expense.startDate || !expense.category) {
+        return { success: false, error: "Missing required fields" };
+      }
+
+      // Remove id field if it exists
+      const { id, ...expenseData } = expense;
+
+      // Add the recurring expense
+      const docRef = await addDoc(collection(db, `users/${user.uid}/recurring`), {
+        ...expenseData,
+        userId: user.uid,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        status: expense.status || 'active'
+      });
+
+      // Generate expenses for this recurring expense
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+
+      // Parse dates
+      const startDate = new Date(expense.startDate);
+      const endDate = expense.endDate ? new Date(expense.endDate) : null;
+      const dueDate = new Date(expense.dueDate);
+      const dueDay = dueDate.getDate();
+
+      // Calculate the range of months to generate expenses for
+      const startMonth = startDate.getMonth();
+      const startYear = startDate.getFullYear();
+      
+      // Only generate expenses up to 12 months in the future
+      const maxFutureMonths = 12;
+      const endMonth = Math.min(
+        currentMonth + maxFutureMonths,
+        endDate ? endDate.getMonth() : currentMonth + maxFutureMonths
+      );
+      const endYear = Math.min(
+        currentYear + Math.floor((currentMonth + maxFutureMonths) / 12),
+        endDate ? endDate.getFullYear() : currentYear + Math.floor((currentMonth + maxFutureMonths) / 12)
+      );
+
+      // Generate expenses for each month in the range
+      for (let year = startYear; year <= endYear; year++) {
+        const startMonthForYear = year === startYear ? startMonth : 0;
+        const endMonthForYear = year === endYear ? endMonth : 11;
+
+        for (let month = startMonthForYear; month <= endMonthForYear; month++) {
+          // Skip if this month is before the start date
+          if (year < startYear || (year === startYear && month < startMonth)) {
+            continue;
+          }
+
+          // Skip if this month is after the end date
+          if (endDate && (year > endYear || (year === endYear && month > endMonth))) {
+            continue;
+          }
+
+          // Skip if this month is more than 12 months in the future
+          const monthsInFuture = (year - currentYear) * 12 + (month - currentMonth);
+          if (monthsInFuture > maxFutureMonths) {
+            continue;
+          }
+
+          // Create due date for this month
+          const expenseDueDate = new Date(year, month, dueDay);
+          if (isNaN(expenseDueDate.getTime())) {
+            console.error("Invalid due date created:", { year, month, day: dueDay });
+            continue;
+          }
+
+          // Create the expense
+          const newExpense: Expense = {
+            name: expense.name,
+            amount: expense.amount,
+            dueDate: expenseDueDate.toISOString(),
+            category: expense.category,
+            status: 'pending',
+            userId: user.uid,
+            recurringId: docRef.id,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            toPay: expense.amount,
+            willPay: 0,
+            description: expense.notes || '',
+            type: 'expense',
+            monthKey: `${docRef.id}-${year}-${month}`
+          };
+
+          // Add the expense
+          await addDoc(collection(db, `users/${user.uid}/expenses`), newExpense);
+        }
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error("Error adding recurring expense:", error);
+      return { success: false, error: (error as Error).message };
     }
   };
   
@@ -314,12 +361,34 @@ import {
   };
   
   // Delete a recurring expense
-  export const deleteRecurringExpense = async (id: string) => {
+  export const deleteRecurringExpense = async (id: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      await deleteDoc(doc(db, 'recurringExpenses', id));
+      const user = auth.currentUser;
+      if (!user) {
+        return { success: false, error: "User not authenticated" };
+      }
+
+      // First, find all expenses associated with this recurring expense
+      const expensesRef = collection(db, `users/${user.uid}/expenses`);
+      const q = query(expensesRef, where("recurringId", "==", id));
+      const querySnapshot = await getDocs(q);
+
+      // Delete all associated expenses
+      const deletePromises = querySnapshot.docs.map(doc => 
+        deleteDoc(doc.ref)
+      );
+
+      // Wait for all expenses to be deleted
+      await Promise.all(deletePromises);
+
+      // Then delete the recurring expense itself
+      await deleteDoc(doc(db, `users/${user.uid}/recurring`, id));
+
+      console.log(`Deleted recurring expense ${id} and ${querySnapshot.size} associated expenses`);
       return { success: true };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error) {
+      console.error("Error deleting recurring expense:", error);
+      return { success: false, error: (error as Error).message };
     }
   };
   
@@ -725,3 +794,312 @@ import {
       throw error;
     }
   }
+
+  // Helper function to get expense by recurring ID and month
+  const getExpenseByRecurringIdAndMonth = async (
+    userId: string, 
+    recurringId: string, 
+    month: number, 
+    year: number
+  ): Promise<Expense | null> => {
+    try {
+      const firstDayOfMonth = new Date(year, month, 1);
+      const lastDayOfMonth = new Date(year, month + 1, 0);
+
+      const q = query(
+        collection(db, `users/${userId}/expenses`),
+        where("recurringId", "==", recurringId),
+        where("dueDate", ">=", firstDayOfMonth.toISOString()),
+        where("dueDate", "<=", lastDayOfMonth.toISOString())
+      );
+
+      const querySnapshot = await getDocs(q);
+      
+      // Log the query results for debugging
+      console.log("Checking for existing expenses:", {
+        userId,
+        recurringId,
+        month,
+        year,
+        firstDay: firstDayOfMonth.toISOString(),
+        lastDay: lastDayOfMonth.toISOString(),
+        foundCount: querySnapshot.size
+      });
+
+      if (querySnapshot.empty) return null;
+
+      // If we found multiple expenses, log them for debugging
+      if (querySnapshot.size > 1) {
+        console.warn("Found multiple expenses for the same month:", {
+          recurringId,
+          month,
+          year,
+          expenseIds: querySnapshot.docs.map(doc => doc.id)
+        });
+      }
+
+      const doc = querySnapshot.docs[0];
+      return { id: doc.id, ...doc.data() } as Expense;
+    } catch (error) {
+      console.error("Error getting expense by recurring ID and month:", error);
+      return null;
+    }
+  };
+
+  // Add a lock to prevent multiple executions
+  let isGeneratingExpenses = false;
+
+  export const generateExpensesFromRecurring = async (userId: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      // Check if we're already generating expenses
+      if (isGeneratingExpenses) {
+        console.log("Expense generation already in progress, skipping...");
+        return { success: true };
+      }
+
+      // Set the lock
+      isGeneratingExpenses = true;
+
+      // Get all active recurring expenses
+      const recurringResult = await getRecurringExpenses(userId, 'active');
+      if (!recurringResult.success || !recurringResult.recurringExpenses) {
+        isGeneratingExpenses = false;
+        return { success: false, error: recurringResult.error };
+      }
+
+      const recurringExpenses = recurringResult.recurringExpenses;
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+
+      // For each recurring expense
+      for (const recurring of recurringExpenses) {
+        try {
+          // Parse and validate dates
+          const startDate = new Date(recurring.startDate);
+          if (isNaN(startDate.getTime())) {
+            console.error("Invalid start date:", recurring.startDate);
+            continue;
+          }
+
+          const endDate = recurring.endDate ? new Date(recurring.endDate) : null;
+          if (endDate && isNaN(endDate.getTime())) {
+            console.error("Invalid end date:", recurring.endDate);
+            continue;
+          }
+
+          // Extract day from due date
+          let dueDay: number;
+          try {
+            const dueDate = new Date(recurring.dueDate);
+            if (isNaN(dueDate.getTime())) {
+              console.error("Invalid due date:", recurring.dueDate);
+              continue;
+            }
+            dueDay = dueDate.getDate();
+          } catch (error) {
+            console.error("Error parsing due date:", recurring.dueDate);
+            continue;
+          }
+
+          // Validate due day
+          if (dueDay < 1 || dueDay > 31) {
+            console.error("Invalid due day:", dueDay);
+            continue;
+          }
+
+          // Calculate the range of months to generate expenses for
+          const startMonth = startDate.getMonth();
+          const startYear = startDate.getFullYear();
+          
+          // Only generate expenses up to 12 months in the future
+          const maxFutureMonths = 12;
+          const endMonth = Math.min(
+            currentMonth + maxFutureMonths,
+            endDate ? endDate.getMonth() : currentMonth + maxFutureMonths
+          );
+          const endYear = Math.min(
+            currentYear + Math.floor((currentMonth + maxFutureMonths) / 12),
+            endDate ? endDate.getFullYear() : currentYear + Math.floor((currentMonth + maxFutureMonths) / 12)
+          );
+
+          // Generate expenses for each month in the range
+          for (let year = startYear; year <= endYear; year++) {
+            const startMonthForYear = year === startYear ? startMonth : 0;
+            const endMonthForYear = year === endYear ? endMonth : 11;
+
+            for (let month = startMonthForYear; month <= endMonthForYear; month++) {
+              // Skip if this month is before the start date
+              if (year < startYear || (year === startYear && month < startMonth)) {
+                continue;
+              }
+
+              // Skip if this month is after the end date
+              if (endDate && (year > endYear || (year === endYear && month > endMonth))) {
+                continue;
+              }
+
+              // Skip if this month is more than 12 months in the future
+              const monthsInFuture = (year - currentYear) * 12 + (month - currentMonth);
+              if (monthsInFuture > maxFutureMonths) {
+                continue;
+              }
+
+              // Create due date for this month
+              const dueDate = new Date(year, month, dueDay);
+              if (isNaN(dueDate.getTime())) {
+                console.error("Invalid due date created:", { year, month, day: dueDay });
+                continue;
+              }
+
+              // Use a transaction to check and create expense atomically
+              const result = await runTransaction(db, async (transaction) => {
+                // Check if we already have an expense for this recurring expense in this month
+                const firstDayOfMonth = new Date(year, month, 1);
+                const lastDayOfMonth = new Date(year, month + 1, 0);
+
+                // Create a unique key for this month's expense
+                const monthKey = `${recurring.id}-${year}-${month}`;
+
+                // First, check if we already have an expense for this exact due date
+                const exactDateQuery = query(
+                  collection(db, `users/${userId}/expenses`),
+                  where("recurringId", "==", recurring.id),
+                  where("dueDate", "==", dueDate.toISOString())
+                );
+
+                const exactDateSnapshot = await getDocs(exactDateQuery);
+                if (!exactDateSnapshot.empty) {
+                  console.log("Found exact date match, skipping:", {
+                    recurringId: recurring.id,
+                    dueDate: dueDate.toISOString(),
+                    existingExpenseIds: exactDateSnapshot.docs.map(doc => doc.id)
+                  });
+                  return { success: false, error: "Expense already exists" };
+                }
+
+                // Then check for any expenses in the same month
+                const monthQuery = query(
+                  collection(db, `users/${userId}/expenses`),
+                  where("recurringId", "==", recurring.id),
+                  where("monthKey", "==", monthKey)
+                );
+
+                const monthSnapshot = await getDocs(monthQuery);
+                
+                if (!monthSnapshot.empty) {
+                  // If we found multiple expenses, log them for debugging
+                  if (monthSnapshot.size > 1) {
+                    console.warn("Found multiple expenses for the same month:", {
+                      recurringId: recurring.id,
+                      month,
+                      year,
+                      expenseIds: monthSnapshot.docs.map(doc => doc.id),
+                      dueDates: monthSnapshot.docs.map(doc => doc.data().dueDate)
+                    });
+                  }
+                  return { success: false, error: "Expense already exists" };
+                }
+
+                // Create new expense
+                const newExpense: Expense = {
+                  name: recurring.name,
+                  amount: recurring.amount,
+                  dueDate: dueDate.toISOString(),
+                  category: recurring.category,
+                  status: 'pending',
+                  userId: userId,
+                  recurringId: recurring.id || '',
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  toPay: recurring.amount,
+                  willPay: 0,
+                  description: recurring.notes || '',
+                  type: 'expense',
+                  monthKey: monthKey // Add a unique key for this month
+                };
+
+                // Add the expense within the transaction
+                const docRef = doc(collection(db, `users/${userId}/expenses`));
+                transaction.set(docRef, newExpense);
+
+                return { success: true, id: docRef.id };
+              });
+
+              if (result.success) {
+                console.log("Created new expense for:", { 
+                  month, 
+                  year, 
+                  recurringId: recurring.id,
+                  newExpenseId: result.id,
+                  dueDate: dueDate.toISOString()
+                });
+              } else if (result.error !== "Expense already exists") {
+                console.error("Failed to create expense:", result.error);
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error processing recurring expense:", error, recurring);
+          continue;
+        }
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error("Error generating expenses from recurring:", error);
+      return { success: false, error: (error as Error).message };
+    } finally {
+      // Always release the lock
+      isGeneratingExpenses = false;
+    }
+  };
+
+  // Helper function to find and delete duplicate expenses
+  export const findAndDeleteDuplicateExpenses = async (userId: string, recurringId: string): Promise<{ success: boolean; deletedCount: number; error?: string }> => {
+    try {
+      // Get all expenses for this recurring expense
+      const expensesRef = collection(db, `users/${userId}/expenses`);
+      const q = query(expensesRef, where("recurringId", "==", recurringId));
+      const querySnapshot = await getDocs(q);
+
+      // Group expenses by month
+      const expensesByMonth = new Map<string, any[]>();
+      querySnapshot.forEach((doc) => {
+        const expense = doc.data();
+        const dueDate = new Date(expense.dueDate);
+        const monthKey = `${dueDate.getFullYear()}-${dueDate.getMonth()}`;
+        
+        if (!expensesByMonth.has(monthKey)) {
+          expensesByMonth.set(monthKey, []);
+        }
+        expensesByMonth.get(monthKey)?.push({ id: doc.id, ...expense });
+      });
+
+      // Find duplicates (months with more than one expense)
+      const duplicates = new Set<string>();
+      expensesByMonth.forEach((expenses, month) => {
+        if (expenses.length > 1) {
+          console.log(`Found ${expenses.length} expenses for month ${month}:`, 
+            expenses.map(e => ({ id: e.id, dueDate: e.dueDate })));
+          expenses.forEach(expense => duplicates.add(expense.id));
+        }
+      });
+
+      // Delete all duplicates
+      const deletePromises = Array.from(duplicates).map(expenseId => 
+        deleteDoc(doc(db, `users/${userId}/expenses`, expenseId))
+      );
+
+      await Promise.all(deletePromises);
+
+      return { 
+        success: true, 
+        deletedCount: duplicates.size,
+        error: duplicates.size > 0 ? `Deleted ${duplicates.size} duplicate expenses` : undefined
+      };
+    } catch (error) {
+      console.error("Error finding and deleting duplicate expenses:", error);
+      return { success: false, deletedCount: 0, error: (error as Error).message };
+    }
+  };
