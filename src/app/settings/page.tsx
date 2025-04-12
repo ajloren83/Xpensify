@@ -17,10 +17,12 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useRouter } from "next/navigation";
 import { User } from "firebase/auth";
 import { toast } from 'sonner';
+import { useTheme } from "next-themes";
 
 export default function SettingsPage() {
   const { user, logout, updateProfile, deleteProfileImage } = useAuth();
   const { settings, setSettings } = useSettings(); // Get the settings from the context
+  const { theme, setTheme } = useTheme();
   const { toast } = useToast();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("profile");
@@ -47,8 +49,7 @@ export default function SettingsPage() {
   const [notifyRecurring, setNotifyRecurring] = useState(true);
   
   // Display settings
-  const [language, setLanguage] = useState("en");
-  const [darkMode, setDarkMode] = useState(true);
+  const [darkMode, setDarkMode] = useState(settings.display.darkMode);
 
   useEffect(() => {
     if (user) {
@@ -65,7 +66,6 @@ export default function SettingsPage() {
     try {
       const userSettings = await getUserSettings(user.uid);
       if (userSettings) {
-        setLanguage(userSettings.display?.language || "en");
         setDarkMode(userSettings.display?.darkMode ?? true);
       }
     } catch (error) {
@@ -206,6 +206,11 @@ export default function SettingsPage() {
     }
   };
 
+  const handleDarkModeChange = (checked: boolean) => {
+    setDarkMode(checked);
+    setTheme(checked ? "dark" : "light");
+  };
+
   const handleSaveSettings = async () => {
     if (!user) return;
     
@@ -215,8 +220,7 @@ export default function SettingsPage() {
     try {
       await updateUserSettings(user.uid, {
         display: {
-          language,
-          darkMode,
+          darkMode: darkMode,
         },
         notifications: {
           salary: notifySalary,
@@ -225,15 +229,18 @@ export default function SettingsPage() {
         },
       });
       
+      setSettings({
+        ...settings,
+        display: {
+          ...settings.display,
+          darkMode: darkMode,
+        },
+      });
+      
       toast({
         title: "Success",
         description: "Settings updated successfully",
       });
-      
-      // Force refresh of currency settings in localStorage
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('xpensify-currency', settings.display.currency);
-      }
     } catch (error) {
       console.error("Error updating settings:", error);
       setError("Failed to update settings. Please try again.");
@@ -523,46 +530,14 @@ export default function SettingsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              
-              <div className="grid gap-2">
-                <Label htmlFor="language">Language</Label>
-                <Select value={settings.display.language} onValueChange={(value) => {
-                  setSettings({
-                    ...settings,
-                    display: {
-                      ...settings.display,
-                      language: value,
-                    },
-                  });
-                }}>
-                  <SelectTrigger id="language">
-                    <SelectValue placeholder="Select language" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="es">Spanish</SelectItem>
-                    <SelectItem value="fr">French</SelectItem>
-                    <SelectItem value="de">German</SelectItem>
-                    <SelectItem value="it">Italian</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
             
             <div className="flex items-center justify-between">
               <Label htmlFor="darkMode">Dark Mode</Label>
               <Switch
                 id="darkMode"
-                checked={settings.display.darkMode}
-                onCheckedChange={(checked) => {
-                  setSettings({
-                    ...settings,
-                    display: {
-                      ...settings.display,
-                      darkMode: checked,
-                    },
-                  });
-                }}
+                checked={darkMode}
+                onCheckedChange={handleDarkModeChange}
               />
             </div>
             
