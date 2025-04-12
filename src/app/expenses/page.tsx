@@ -45,6 +45,7 @@ import { cn } from "@/lib/utils";
 import { ExpenseService } from "@/lib/services/expense-service";
 import { useSettings } from "@/lib/settings-context";
 import { FinancialSummary } from "@/components/expenses/financial-summary";
+import { BetaBadge } from "@/components/ui/beta-badge";
 
 const expenseService = new ExpenseService();
 
@@ -617,6 +618,8 @@ export default function ExpensesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <BetaBadge />
     </div>
   );
 } 

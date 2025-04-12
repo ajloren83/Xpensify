@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { ToastContextProvider } from "@/components/ui/toast-context";
 import { Providers } from "@/components/providers";
 import { LayoutWrapper } from "@/components/layout/layout-wrapper";
+import { BetaBadge } from "@/components/ui/beta-badge";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -33,6 +34,7 @@ export default function RootLayout({
                 {children}
               </LayoutWrapper>
               <Toaster />
+              <BetaBadge />
             </ToastContextProvider>
           </AuthProvider>
         </Providers>
